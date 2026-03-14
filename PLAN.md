@@ -188,8 +188,472 @@ class ModelConfig:
     seed: int = 42
 ```
 
+#### What do all these settings mean? (Beginner-Friendly Guide)
+
+Don't worry if the names above look intimidating. Every single one maps to a simple idea. Think of building an LLM like teaching a student to write stories — these settings control *how* that student learns.
+
+---
+
+**DATA SETTINGS — How we feed text to the model**
+
+**`vocab_size`** — The dictionary size
+> Imagine you give a student a dictionary. `vocab_size` is how many unique "words" (in our case, unique characters like `a`, `b`, `!`, ` `) are in that dictionary. If your training text uses 65 unique characters, the vocab_size is 65. The model can only read and write characters it has seen in this dictionary.
+
+**`block_size = 64`** — The reading window (context length)
+> This is how many characters the model can look at *at once* when predicting the next character. Think of it like reading through a small window — the model slides a window of 64 characters across the text and tries to predict what comes next.
+>
+> - `block_size = 64` → the model sees 64 characters of context at a time
+> - GPT-4 has a block_size of ~128,000 tokens. Ours is tiny for learning purposes.
+>
+> ```
+> "Once upon a time, in a land far away, there lived a young princess na"
+>  ├──────────── 64 characters (the model sees this) ──────────────────┤
+>                                                  predict next → "m"
+> ```
+>
+> **This directly controls how far back attention can look.** When the model computes attention scores (described in `n_head` below), it can ONLY look at characters inside this window. Anything before the window is gone — the model has no memory of it.
+>
+> ```
+> Full story: "...the king had a daughter. Once upon a time, in a land far away, there lived a young princess na"
+>              ├── OUTSIDE the window ──┤├───────────── INSIDE the window (64 chars) ──────────────────┤
+>              attention CANNOT see this  attention CAN score all of these characters
+> ```
+>
+> This is a fundamental limitation. With `block_size = 64`, the model can never learn patterns that span more than 64 characters. That's why real-world LLMs use much larger context windows — ChatGPT/Claude can see tens of thousands of tokens at once, letting them reference things from pages ago in a conversation.
+
+**`batch_size = 32`** — How many text windows to study at once
+> This works together with `block_size`. Here's exactly what happens in one training step:
+>
+> 1. Pick 32 **random starting positions** in the training text
+> 2. From each starting position, grab a window of 64 characters (block_size)
+> 3. Feed all 32 windows into the model **at the same time**
+>
+> ```
+> Our training text (thousands of characters):
+> "Once upon a time, in a land far away, there lived a young princess named Aurora.
+>  She loved to explore the enchanted forest near her castle. One day, while wandering
+>  through the woods, she discovered a hidden cave behind a waterfall. Inside the cave
+>  she found a magical book that could grant wishes..."
+>
+> One training step with batch_size=32, block_size=64:
+>
+> Window  1: "Once upon a time, in a land far away, there lived a young pr"  (64 chars)
+> Window  2: "cess named Aurora. She loved to explore the enchanted forest"  (64 chars)
+> Window  3: "e enchanted forest near her castle. One day, while wandering"  (64 chars)
+> Window  4: "discovered a hidden cave behind a waterfall. Inside the cave"  (64 chars)
+>   ...
+> Window 32: "magical book that could grant wishes. She opened it carefully"  (64 chars)
+>
+> All 32 windows processed SIMULTANEOUSLY in one step.
+>
+> The data shape going into the model: (32, 64)
+>   32 = batch_size (number of windows)
+>   64 = block_size (characters per window)
+> ```
+>
+> **Why not process one window at a time?**
+> - **Speed**: GPUs are designed to do many calculations in parallel. Processing 32 windows takes almost the same time as processing 1.
+> - **Stability**: Each single window gives a slightly different "lesson." Averaging the lessons from 32 windows gives a more reliable signal for how to improve. It's like asking 32 students what they think the answer is and taking the average, instead of relying on one student's possibly-wrong guess.
+>
+> **Tradeoffs**:
+> - Bigger batch (64, 128) = smoother learning, but uses more memory
+> - Smaller batch (8, 16) = noisier learning, but fits on smaller hardware
+> - If you get an "out of memory" error, the first thing to try is reducing batch_size
+
+---
+
+**MODEL ARCHITECTURE — The shape of the model's "brain"**
+
+**`n_embd = 128`** — Embedding dimension (how rich each character's representation is)
+> Computers can't understand letters directly — they need numbers. An "embedding" converts each character into a list of numbers. `n_embd` is how long that list is.
+>
+> Think of it this way: if you had to describe the letter "A" to an alien using exactly 128 numbers, you could capture a lot of information — is it a vowel? uppercase? how often does it appear? what letters usually come after it? More numbers = richer description = the model can learn subtler patterns.
+>
+> ```
+> Character "a" → [0.23, -0.87, 0.45, 1.12, ..., -0.33]  (128 numbers)
+> Character "b" → [0.91, 0.14, -0.67, 0.05, ..., 0.82]   (128 numbers)
+>
+> Characters with similar roles (like vowels) will end up with
+> similar number lists — the model discovers this on its own!
+> ```
+>
+> - GPT-3 uses `n_embd = 12,288`. Ours is 128 — much smaller, but enough to learn.
+
+**`n_layer = 6`** — Number of transformer layers (how deep the thinking goes)
+> A "layer" is one round of processing. Each layer takes the output of the previous layer, processes it further, and passes the result to the next layer. Think of it as re-reading a sentence multiple times — each pass *could* notice something new.
+>
+> ```
+> Input text
+>    ↓
+> [ Layer 1 ]
+>    ↓
+> [ Layer 2 ]     We don't tell the layers what to learn.
+>    ↓             Each one figures out on its own what's
+> [ Layer 3 ]     useful for predicting the next character.
+>    ↓
+> [ Layer 4 ]     The only goal: minimize prediction error.
+>    ↓             Everything else emerges automatically.
+> [ Layer 5 ]
+>    ↓
+> [ Layer 6 ]
+>    ↓
+> Prediction: next character
+> ```
+>
+> **Important — what we know vs. what we don't:**
+>
+> We do **not** program what each layer learns. There's no line of code that says "Layer 1, learn grammar" or "Layer 5, learn story structure." All 6 layers have identical code. The only thing driving what they learn is the training signal — "you predicted the wrong next character, adjust yourself."
+>
+> However, researchers have used interpretability tools (probing classifiers, activation analysis) to peek inside trained models and found a **rough tendency**:
+> - **Earlier layers** (closer to input) tend to pick up simpler, more local patterns
+> - **Later layers** (closer to output) tend to pick up more abstract, longer-range patterns
+>
+> But this is a *tendency*, not a rule. In practice:
+> - A single layer often does many things simultaneously
+> - The same pattern might be partially handled by multiple layers
+> - Different training runs with different random seeds can produce different internal organizations
+> - We still don't fully understand why specific layers learn specific things
+>
+> This is an active area of research called **mechanistic interpretability** — trying to reverse-engineer what neural networks actually learn inside their layers. It's one of the biggest open questions in AI.
+>
+> For our purposes: more layers = the model has more rounds of processing to build up understanding, but we can't predict *exactly* what each layer will do. We just give it enough layers and let it figure things out.
+>
+> More layers = potentially deeper understanding, but slower training and more memory.
+> GPT-3 has 96 layers. Ours has 6 — plenty for learning from short stories.
+
+**`n_head = 4`** — Number of attention heads (different ways of paying attention)
+>
+> This one needs a longer explanation. Before understanding *multiple* heads, you need to understand what *one* head of attention does.
+>
+> ---
+>
+> **First: What is "attention"?**
+>
+> When the model is trying to predict the next character, it needs to decide: **which of the earlier characters are most relevant right now?**
+>
+> For example, to predict what comes after `"The cat sat on the ma"`:
+>
+> ```
+> T  h  e     c  a  t     s  a  t     o  n     t  h  e     m  a  [?]
+> ```
+>
+> Not all earlier characters are equally useful. The `m` and `a` are very relevant (we're in the middle of a word). The `cat` might be relevant (subject of the sentence). The `o` in `on` is less important here.
+>
+> Attention is a mechanism that computes a **relevance score** between every pair of characters. It produces something like this:
+>
+> ```
+> To predict [?], how much should I look at each earlier character?
+>
+> "T" → 2%     (not very relevant)
+> "h" → 1%
+> "e" → 1%
+> " " → 1%
+> "c" → 3%     (start of "cat" — somewhat relevant)
+> "a" → 5%     (part of "cat")
+> "t" → 6%     (end of "cat" — the subject)
+> " " → 1%
+> "s" → 2%
+> "a" → 3%
+> "t" → 4%     (part of "sat" — the verb)
+> " " → 1%
+> "o" → 1%
+> "n" → 1%
+> " " → 1%
+> "t" → 3%
+> "h" → 2%
+> "e" → 2%
+> " " → 2%
+> "m" → 25%    (very relevant! we're spelling a word)
+> "a" → 33%    (most relevant! the character right before)
+>              ────
+>              100%  (all scores add up to 100%)
+> ```
+>
+> The model then uses these scores to create a **weighted mix** of information from all earlier characters, paying most attention to the high-scoring ones. This mixed information helps it predict that `[?]` should be `t` (completing "mat").
+>
+> ---
+>
+> **The problem with ONE head: it can only make ONE set of scores**
+>
+> Look at the example above — that single attention pattern mostly focused on nearby characters (`m`, `a`). That's useful for completing the current word. But what if the model ALSO needs to:
+>
+> - Know what the subject was (`cat`) to understand the sentence
+> - Notice that `the` appeared before, making `the mat` a likely phrase
+> - Track that we're inside a short sentence, not a long one
+>
+> One set of scores can't do all of this at once. If it focuses heavily on `m` and `a` (nearby characters), it can't simultaneously focus heavily on `cat` (far away).
+>
+> ---
+>
+> **The solution: multiple heads — run several attention patterns in parallel**
+>
+> With `n_head = 4`, the model runs **4 independent attention calculations** at the same time, each producing its own set of scores:
+>
+> ```
+> Input: "The cat sat on the ma[?]"
+>
+>                    Head 1          Head 2          Head 3          Head 4
+>                  (scores)        (scores)        (scores)        (scores)
+>
+>  "T"  ─────────   2%              8%              1%              3%
+>  "h"  ─────────   1%              3%              1%              2%
+>  "e"  ─────────   1%              2%              1%              2%
+>  " "  ─────────   1%              1%              5%              1%
+>  "c"  ─────────   3%              7%              1%              2%
+>  "a"  ─────────   5%             10%              1%              3%
+>  "t"  ─────────   6%             15%              2%              4%
+>  " "  ─────────   1%              1%              8%              1%
+>  "s"  ─────────   2%              3%              2%              3%
+>  "a"  ─────────   3%              5%              2%              4%
+>  "t"  ─────────   4%             10%              3%              5%
+>  " "  ─────────   1%              1%              9%              1%
+>  "o"  ─────────   1%              2%              3%              2%
+>  "n"  ─────────   1%              2%              3%              2%
+>  " "  ─────────   1%              1%             10%              1%
+>  "t"  ─────────   3%              5%              5%             10%
+>  "h"  ─────────   2%              3%              5%             12%
+>  "e"  ─────────   2%              3%              5%             13%
+>  " "  ─────────   2%              1%             11%              3%
+>  "m"  ─────────  25%              5%              8%              8%
+>  "a"  ─────────  33%             12%             14%             18%
+>
+>  Focuses on:     nearby chars    "cat"+"sat"     spaces/structure "the"+"the"
+>                  (spelling)      (meaning)       (word boundaries) (repetition)
+> ```
+>
+> Each head produces 128 / 4 = **32 numbers** of output (they split the embedding dimension between them). The 4 outputs are then **concatenated** (glued together) back into 128 numbers and mixed with a final multiplication.
+>
+> ```
+> Head 1 output: [32 numbers]  ─┐
+> Head 2 output: [32 numbers]  ─┤── concatenate ──→ [128 numbers] ──→ final mix ──→ [128 numbers]
+> Head 3 output: [32 numbers]  ─┤
+> Head 4 output: [32 numbers]  ─┘
+> ```
+>
+> ---
+>
+> **Important caveats (same as with layers):**
+>
+> The labels I used above ("spelling", "meaning", "word boundaries", "repetition") are **made up for illustration**. In reality:
+> - We don't assign roles to heads — they learn on their own
+> - The actual attention scores would look messier than my clean example
+> - Some heads learn interpretable patterns, others don't
+> - Researchers have found that some heads in large models can be removed entirely with little effect
+>
+> **The math behind it** (optional — you'll see this in Step 3):
+> Each head has its own small set of learnable weights (Q, K, V matrices). These weights start random and gradually adjust during training until the head produces attention patterns that help predict the next character. That's all there is to it — the "magic" is just matrix multiplications + training.
+>
+> **How far back can attention look?**
+> Exactly `block_size` characters — in our case, 64. Every character in the window can attend to every earlier character in the same window, but nothing outside the window. This is why `block_size` is sometimes called the "context length" — it's the maximum range of attention.
+>
+> **So how do scores actually help predict the next character?**
+>
+> The scores tell the model how much to "listen to" each earlier character when deciding what comes next. Characters with high scores contribute more to the prediction, characters with low scores are mostly ignored.
+>
+> It's not picking just one character — it's a **weighted mix** of information from ALL characters, blended by the scores:
+>
+> ```
+> Scores:       "m" = 25%,  "a" = 33%,  "t" (from "cat") = 6%,  "T" = 2%  ...
+>
+> What the model "hears":
+>   Loud and clear:  "m" and "a"         → "we're spelling 'ma_' — probably 'mat' or 'map'"
+>   Faintly:         "cat", "sat"        → "about a cat sitting, so 'mat' makes sense"
+>   Barely:          "T", "h", "e"       → almost ignored for this prediction
+>                                            ↓
+>                                      predict: "t"  (completing "mat")
+> ```
+>
+> The model takes a **weighted average** of information from all characters — 33% from `"a"`, 25% from `"m"`, 6% from `"t"`, 2% from `"T"`, etc. — and that blended signal feeds into the rest of the network to produce the final prediction. This is why the mechanism is called "attention" — it literally pays more attention to the relevant parts and less to the irrelevant parts.
+>
+> **Why 4 heads and not 1 or 100?**
+> - `n_head = 1` → only one attention pattern per layer (limited)
+> - `n_head = 4` → four parallel patterns (good balance for our small model)
+> - `n_head = 128` → would mean each head only gets 128/128 = 1 number to work with (too small to be useful)
+> - Rule of thumb: `n_embd / n_head` should be at least 16-32 for each head to have enough capacity
+
+**`dropout = 0.1`** — Random forgetting (prevents memorizing)
+> During training, the model randomly "turns off" 10% of its neurons at each step. This sounds destructive — why would disabling parts of the model help? Let's look at a concrete example.
+>
+> **The problem dropout solves: overfitting (memorizing instead of learning)**
+>
+> Imagine our training data contains these sentences:
+> ```
+> "The cat sat on the mat."
+> "The dog sat on the rug."
+> "The bird sat on the branch."
+> ```
+>
+> What we WANT the model to learn:
+> - After "The [animal] sat on the", predict a reasonable surface/place
+> - General pattern: [animal] + [sat on] + [surface]
+>
+> What can go WRONG without dropout:
+> - The model has 1.2 million parameters but maybe only 10,000 words of training data
+> - It has more than enough capacity to memorize every single sentence exactly
+> - Instead of learning "animals sit on surfaces", it memorizes "character #4,521 in the training data is 'm'"
+> - Result: it perfectly predicts training data but generates garbage on new text
+>
+> ```
+> Without dropout (overfitting):
+>   Training data:  "The cat sat on the mat" → predicts perfectly ✓
+>   New input:      "The fox sat on the ___" → predicts nonsense ✗
+>   (it never saw "fox" in training, so it's lost)
+>
+> With dropout (generalization):
+>   Training data:  "The cat sat on the mat" → predicts well (not perfect) ✓
+>   New input:      "The fox sat on the ___" → predicts "log" or "rock" ✓
+>   (it learned the general pattern, not exact memorization)
+> ```
+>
+> **How dropout forces generalization:**
+>
+> Each training step, 10% of neurons are randomly disabled (set to zero):
+>
+> ```
+> Step 1:  neurons active: [✓][✗][✓][✓][✗][✓][✓][✓][✗][✓]  (random 10% off)
+> Step 2:  neurons active: [✓][✓][✗][✓][✓][✓][✗][✓][✓][✗]  (different 10% off)
+> Step 3:  neurons active: [✗][✓][✓][✓][✓][✗][✓][✗][✓][✓]  (different 10% off)
+> ```
+>
+> Because a different random set is disabled each time, the model can never rely on any specific neuron always being there. It's forced to spread knowledge across many neurons, building redundant pathways. This redundancy is what makes it generalize — if it stored "cat → mat" in one specific neuron, that neuron might be off next time, so the model learns the broader pattern instead.
+>
+> Think of it like a sports team where the coach randomly benches different players each practice. No single player can carry the team alone — everyone has to learn to play well, and the team becomes more resilient.
+>
+> **During generation (inference), dropout is turned OFF** — all neurons are active, giving the model its full power.
+>
+> - `dropout = 0.0` → no forgetting (risk of memorizing the training data exactly)
+> - `dropout = 0.1` → forget 10% randomly each step (good for small datasets like ours)
+> - `dropout = 0.3` → forget 30% (more aggressive, for very small datasets)
+> - `dropout = 0.5` → forget 50% (very aggressive, rarely used in modern LLMs)
+
+---
+
+**TRAINING SETTINGS — How the model studies**
+
+**`max_iters = 5000`** — Total training steps
+> One "iteration" = the model looks at one batch of data, makes predictions, checks how wrong it was, and adjusts itself. 5000 iterations means 5000 rounds of practice.
+>
+> Think of it as doing 5000 practice tests. Early iterations = wild guessing. Later iterations = the model has learned real patterns.
+
+**`learning_rate = 3e-4`** — Step size (how much to adjust each time)
+> After each practice round, the model needs to adjust its internal settings. The learning rate controls *how big* each adjustment is.
+>
+> `3e-4` means `0.0003` — a very small number. This is deliberate:
+> - **Too big** (like 0.01): The model overcorrects wildly, like a student who panics after every mistake and rewrites everything
+> - **Too small** (like 0.000001): The model barely changes, like a student who ignores feedback
+> - **Just right** (0.0003): Small, steady improvements each round
+>
+> ```
+> learning_rate = 0.01    →  Too big  — model explodes, loss goes to infinity
+> learning_rate = 0.0003  →  Sweet spot — steady improvement
+> learning_rate = 0.000001 → Too small — model barely learns, wastes time
+> ```
+
+**`warmup_iters = 100`** — Gentle start
+> For the first 100 iterations, the learning rate starts at nearly zero and gradually increases to `3e-4`. This is like warming up before exercise — jumping straight into a high learning rate when the model's weights are still random can cause instability.
+
+**`min_lr = 3e-5`** — Slow down near the end
+> As training progresses, the learning rate gradually decreases from `3e-4` down to `3e-5` (10× smaller). This is like taking smaller steps as you get closer to the answer — big adjustments early on, fine-tuning later.
+
+**`weight_decay = 0.1`** — Prevent laziness
+> This gently pushes the model's internal numbers toward zero, preventing them from growing unnecessarily large. It's a form of regularization — keeping the model "lean" so it learns general patterns instead of overly specific ones.
+
+**`eval_interval = 250`** — How often to check progress
+> Every 250 training steps, we pause and test the model on text it has *never seen* (the validation set). This tells us if the model is actually learning vs. just memorizing.
+
+**`eval_iters = 200`** — How thorough each check is
+> When we do check progress, we test on 200 different batches and average the results. More batches = more reliable measurement of how good the model is.
+
+---
+
+**GENERATION SETTINGS — How the model writes text**
+
+**`temperature = 0.8`** — Creativity dial
+> Controls how "random" the model's word choices are when generating text.
+>
+> Think of it as a confidence dial:
+> - `temperature = 0.1` → Very confident, always picks the most likely next character. Output is repetitive but safe: *"the the the the"*
+> - `temperature = 0.8` → Mostly confident but sometimes surprises you. Good balance.
+> - `temperature = 2.0` → Very random, often picks unlikely characters. Output is creative but often nonsensical: *"th$e xqat zza"*
+>
+> ```
+> Model thinks next character probabilities are:
+>   "e" = 60%, "a" = 25%, "o" = 10%, "x" = 5%
+>
+> temperature = 0.1  →  "e" almost every time (focused)
+> temperature = 0.8  →  usually "e", sometimes "a" (balanced)
+> temperature = 2.0  →  could be anything, even "x" (chaotic)
+> ```
+
+**`top_k = 50`** — Only consider the best options
+> Before picking the next character, throw away everything except the top 50 most likely candidates. This removes obviously bad choices (like putting "Z" after "th").
+
+**`top_p = 0.9`** — Smart cutoff (nucleus sampling)
+> Instead of a fixed number of candidates (top_k), keep adding candidates from most-likely to least-likely until their combined probability reaches 90%. When the model is very confident, this might mean only 2-3 options. When it's uncertain, it might keep 40+. It adapts automatically.
+
+**`repetition_penalty = 1.1`** — Don't repeat yourself
+> Reduces the probability of characters/words that already appeared recently. Without this, models tend to get stuck in loops: *"the cat the cat the cat the cat..."*
+
+**`max_new_tokens = 200`** — When to stop writing
+> The maximum number of characters the model will generate per response. Without a limit, it would write forever.
+
+---
+
+**SYSTEM SETTINGS — Hardware and reproducibility**
+
+**`device = "auto"`** — Where to run the computation
+> - `"cuda"` → NVIDIA GPU (fastest, 10-100× faster than CPU)
+> - `"mps"` → Apple Silicon GPU (Mac M1/M2/M3)
+> - `"cpu"` → Regular processor (slowest, but always available)
+> - `"auto"` → Automatically picks the best available option
+
+**`compile_model = False`** — Speed optimization
+> When set to `True`, PyTorch analyzes the entire model and optimizes it as one unit, making training ~2× faster. We keep it off by default because it requires PyTorch 2.0+ and adds startup time. Turn it on once you've verified everything works.
+
+**`seed = 42`** — Reproducibility
+> Neural networks use random numbers (for initialization, dropout, batching). Setting a seed means the "random" numbers are the same every time you run the code. This way, if you and a friend both run the same code, you'll get identical results. (42 is a tradition in programming — a reference to *The Hitchhiker's Guide to the Galaxy*.)
+
+---
+
+**MODERN UPGRADE FLAGS — Toggle new techniques on/off**
+
+These are all `False` by default. You'll start with the classical 2017 architecture, then flip these on one-by-one in Step 6 to see how modern LLMs improved on the original design.
+
+| Flag | What it changes | When to enable |
+|------|----------------|----------------|
+| `use_rope` | How the model knows word position in a sentence | Step 6.1 |
+| `use_rmsnorm` | How the model normalizes numbers between layers | Step 6.2 |
+| `use_swiglu` | How neurons "activate" inside each layer | Step 6.3 |
+| `use_gqa` | How attention heads share work | Step 6.4 |
+| `use_kv_cache` | How fast the model generates text | Step 6.5 |
+
+Don't worry about understanding these yet — each one gets a full explanation in Step 6.
+
+---
+
+**How these settings relate to model size (number of parameters)**:
+
+A "parameter" is one adjustable number inside the model. More parameters = the model can memorize more patterns, but also needs more data and time to train. Here's how our settings translate:
+
+```
+Main parameter costs:
+  Token embeddings:      vocab_size × n_embd       =  65 × 128     =     8,320
+  Position embeddings:   block_size × n_embd       =  64 × 128     =     8,192
+  Per transformer layer:
+    Attention (Q,K,V,O): 4 × n_embd × n_embd      =  4 × 128×128  =    65,536
+    Feed-forward:        2 × n_embd × (4 × n_embd) = 2 × 128×512  =   131,072
+    Layer norms:         2 × n_embd                =  2 × 128      =       256
+  × n_layer:            6 layers                    =  6 × 196,864  = 1,181,184
+  Final linear:          n_embd × vocab_size        =  128 × 65     =     8,320
+                                                                    ___________
+  Total:                                                            ≈ 1,206,016
+
+That's about 1.2 million parameters — tiny by industry standards
+(GPT-3 has 175 BILLION), but perfect for learning.
+```
+
 **Why these values?**
-- `n_embd=128` and `n_layer=6` gives ~500K-2M parameters — small enough to train on CPU in minutes, large enough to learn real patterns.
+- `n_embd=128` and `n_layer=6` gives ~1.2M parameters — small enough to train on CPU in minutes, large enough to learn real patterns from stories.
 - `learning_rate=3e-4` with warmup + cosine decay is the standard recipe from GPT-2/3 papers.
 - `dropout=0.1` prevents overfitting on our small dataset.
 - Modern upgrade flags let you toggle techniques on/off and see the difference.
