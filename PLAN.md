@@ -2,6 +2,12 @@
 
 > A step-by-step guide to building a miniature Large Language Model from scratch — using the same architecture and techniques behind GPT, LLaMA, Gemma, and Mistral.
 
+
+
+Author: Johnson Fu (johnson.fu@gmail.com) co-edited by KIMI 2.5 and Claude Opus 4.6
+
+
+
 ## Project Goal
 
 Build a fully functional mini-LLM that can:
