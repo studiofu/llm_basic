@@ -112,8 +112,7 @@ uv add tensorboard           # Optional: training dashboards
 
 **PyTorch Installation (Choose One)**:
 
-<details>
-<summary>Option A: CPU-only (simpler, works everywhere)</summary>
+Option A: CPU-only (simpler, works everywhere)
 
 ```bash
 # CPU-only PyTorch (no GPU required, slower training)
@@ -121,14 +120,12 @@ uv pip install torch>=2.6.0 numpy tqdm --index-url https://download.pytorch.org/
 ```
 
 **When to use CPU-only**:
+
 - You don't have an NVIDIA GPU
 - You just want to explore the code without training
 - Training speed is not a priority (e.g., small experiments)
 
-</details>
-
-<details>
-<summary>Option B: GPU (CUDA) — Recommended for training</summary>
+Option B: GPU (CUDA) — Recommended for training
 
 ```bash
 # GPU PyTorch with CUDA 12.4 (10-100× faster training)
@@ -139,18 +136,18 @@ uv run python -c "import torch; print(f'CUDA available: {torch.cuda.is_available
 ```
 
 **Prerequisites**:
+
 - NVIDIA GPU with CUDA compute capability 3.5+
 - [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) installed
 - NVIDIA drivers updated
 
 **When to use GPU**:
+
 - You have an NVIDIA GPU and want fast training
 - You're doing serious experiments or full training runs
 - You want to train models with larger configs
 
-</details>
-
-`**pyproject.toml**` (what uv generates and manages):
+`**pyproject.toml`** (what uv generates and manages):
 
 ```toml
 [project]
@@ -1053,13 +1050,13 @@ Vocabulary = the set of unique characters (or tokens) in your data. To get the c
 2. **Collect unique characters:** e.g. `chars = sorted(set(text))` — `set(text)` removes duplicates, `sorted` gives a stable order so the same dataset always yields the same mapping.
 3. **Vocab size** = number of unique characters: `vocab_size = len(chars)` (e.g. 65).
 4. **Optional — print statistics:** total characters `len(text)`, vocab size `len(chars)`, and maybe the list of characters or a frequency table (how many times each character appears). Example:
-   ```python
+  ```python
    from collections import Counter
    counts = Counter(text)
    print("Vocab size:", len(counts))
    print("Total characters:", len(text))
    print("Most common:", counts.most_common(10))
-   ```
+  ```
 
 The mappings (char→index, index→char) are then built from `chars`: for example, `char_to_idx = {c: i for i, c in enumerate(chars)}` and `idx_to_char = {i: c for i, c in enumerate(chars)}`.
 
@@ -1091,13 +1088,13 @@ The script `src/01_data_preparation.py` was created with the following implement
   val_file: str = "TinyStoriesV2-GPT4-valid.txt"
   ```
   To use different data, edit these values in `src/config.py` or pass a custom config to `prepare_data(config=my_config)`.
-
 - **Vocabulary Analysis**: Combines train and validation text, extracts unique characters using `sorted(set(text))`, resulting in 230 unique characters (includes ASCII letters, digits, punctuation, and various Unicode characters).
 - **Mappings**: Creates `stoi` (char→index) and `itos` (index→char) dictionaries.
 - **Encode/Decode**: Simple functions using list comprehensions.
 - **Verification**: Samples 100 characters from training data, encodes then decodes, confirms perfect reconstruction.
 
 **Dataset Stats**:
+
 - Training: 2,226,845,268 characters (~2.2B)
 - Validation: 22,493,387 characters
 - Vocabulary: 230 unique characters
@@ -1209,6 +1206,7 @@ print("✓ Lossless encoding verified!")
 ```
 
 **Questions to explore**:
+
 - Is the encoding lossless? (Does `decode(encode(text)) == text` always hold?)
 - What happens if you encode characters not in the training data?
 - What is the shape of a training batch? Why `(batch_size, block_size)`?
@@ -1748,11 +1746,13 @@ Free performance — just requires PyTorch 2.0+.
 
 **Where to download (best options)**:
 
-| Source | Why use it | How to get it |
-|--------|------------|---------------|
-| **TinyStories (Hugging Face)** | **Best for this project.** Short, simple sentences; designed for small LMs; clean and consistent. | [TinyStories on Hugging Face](https://huggingface.co/datasets/roneneldan/TinyStories) — use `datasets` or the Hub UI; pick a split (e.g. `train`), load as text, then concatenate and save as `data/stories.txt`. |
-| **Project Gutenberg** | Free, public-domain books; good for classic fairy tales and prose. | [gutenberg.org](https://www.gutenberg.org/) — search e.g. "Grimm" or "Aesop"; open a book → "Plain Text UTF-8" → copy or download. Paste/append into `data/stories.txt`. |
-| **WikiText, OpenWebText, etc.** | Larger, more varied; better for scaling up later. | [Hugging Face Datasets](https://huggingface.co/datasets) — search "wikitext" or "openwebtext"; load and export a subset as one text file. |
+
+| Source                          | Why use it                                                                                        | How to get it                                                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TinyStories (Hugging Face)**  | **Best for this project.** Short, simple sentences; designed for small LMs; clean and consistent. | [TinyStories on Hugging Face](https://huggingface.co/datasets/roneneldan/TinyStories) — use `datasets` or the Hub UI; pick a split (e.g. `train`), load as text, then concatenate and save as `data/stories.txt`. |
+| **Project Gutenberg**           | Free, public-domain books; good for classic fairy tales and prose.                                | [gutenberg.org](https://www.gutenberg.org/) — search e.g. "Grimm" or "Aesop"; open a book → "Plain Text UTF-8" → copy or download. Paste/append into `data/stories.txt`.                                          |
+| **WikiText, OpenWebText, etc.** | Larger, more varied; better for scaling up later.                                                 | [Hugging Face Datasets](https://huggingface.co/datasets) — search "wikitext" or "openwebtext"; load and export a subset as one text file.                                                                         |
+
 
 **Recommended:** Start with **TinyStories** (or a few **Project Gutenberg** fairy tales) so the dataset is small, coherent, and easy to inspect. Move to larger corpora once the pipeline works.
 

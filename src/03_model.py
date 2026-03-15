@@ -108,6 +108,9 @@ class Head(nn.Module):
         
         # Apply causal mask: set future positions to -inf
         # Only use the mask up to current seq_len
+        # softmax is 0 when the score is -inf
+        # scores[b, i, j] = “how much position i attends to position j” (before softmax).
+        # if j > i, then scores[b, i, j] = -inf as j is future position
         scores = scores.masked_fill(
             self.mask[:, :seq_len, :seq_len] == 0, float("-inf")
         )
@@ -341,6 +344,8 @@ class GPTLanguageModel(nn.Module):
         x = self.ln_final(x)
         
         # Project to vocabulary: (batch_size, seq_len, vocab_size)
+        # logits are pre‑softmax scores, not probabilities.
+        # if you want probabilities, you need to apply softmax to logits
         logits = self.lm_head(x)
         
         # Compute loss if targets provided
@@ -385,6 +390,8 @@ class GPTLanguageModel(nn.Module):
                 logits = logits[:, -1, :]  # (batch_size, vocab_size)
                 
                 # Apply temperature scaling
+                # temperature < 1, more focused, less random, as the value of logits become bigger, after softmax, the value of probs become bigger, so the model is more likely to choose the token with higher probability
+                # temperature > 1, value become smaller, so the model is more likely to choose the token with lower probability
                 logits = logits / temperature
                 
                 # Optional top-k filtering
