@@ -1181,7 +1181,36 @@ We do **not** pass only "T" (or only [54]) as input. We pass the **entire block*
 
 **Try It Yourself**:
 
-- Encode "Hello World" and decode it back. Is it lossless?
+```python
+from src.tokenizer import Tokenizer
+
+# Create vocabulary mappings from some text
+text = "Hello World! This is a test."
+chars = sorted(set(text))
+stoi = {ch: i for i, ch in enumerate(chars)}  # string to int
+itos = {i: ch for i, ch in enumerate(chars)}  # int to string
+
+# Create tokenizer with the mappings
+tokenizer = Tokenizer(stoi, itos)
+
+# Encode "Hello World" to token IDs
+text = "Hello World"
+tokens = tokenizer.encode(text)
+print(f"Text:   '{text}'")
+print(f"Tokens: {tokens}")
+
+# Decode tokens back to text
+decoded = tokenizer.decode(tokens)
+print(f"Decoded: '{decoded}'")
+
+# Verify it's lossless
+assert text == decoded, "Encoding/decoding should be lossless!"
+print("✓ Lossless encoding verified!")
+```
+
+**Questions to explore**:
+- Is the encoding lossless? (Does `decode(encode(text)) == text` always hold?)
+- What happens if you encode characters not in the training data?
 - What is the shape of a training batch? Why `(batch_size, block_size)`?
 
 ---

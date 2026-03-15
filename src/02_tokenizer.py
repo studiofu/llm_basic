@@ -196,6 +196,9 @@ def create_dataloaders(
     train_dataset = TextDataset(train_data, config.block_size)
     val_dataset = TextDataset(val_data, config.block_size)
     
+    # A DataLoader in PyTorch provides an efficient, easy-to-use iterator over a dataset.
+    # It handles batching, optionally shuffling, and loading data in parallel, and is commonly used for feeding data to neural networks during training.
+    # In this project, we use DataLoader to serve (input, target) pairs from the TextDataset in mini-batches.
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,
