@@ -1192,6 +1192,46 @@ We do **not** pass only "T" (or only [54]) as input. We pass the **entire block*
 
 **What it implements** — building blocks from smallest to largest:
 
+**Summary: Step 0 through Attention** (concepts + examples for readers weak in math):
+
+**Step 0 (config).** We use: `block_size` = 64 (max tokens per sequence), `n_embd` = 128 (every vector is 128 numbers), `n_head` = 4 (number of attention heads).
+
+**Example — what do we pass into the block?** Use the text **"the cat is"** (10 characters). We pass the **whole sequence at once**, not one letter at a time. Each character becomes a row of 128 numbers:
+
+```
+Position:    0    1    2    3    4    5    6    7    8    9
+Character:  "t"  "h"  "e"  " "  "c"  "a"  "t"  " "  "i"  "s"
+
+x = one matrix with 10 rows and 128 columns:
+    row 0 = 128 numbers for "t"
+    row 1 = 128 numbers for "h"
+    ...
+    row 9 = 128 numbers for "s"
+
+Shape of x: (10, 128)   →   n × 128, with n = 10 (length), max n = block_size (64).
+```
+
+So **x** is the block input: **n rows × 128 columns**. Each row is one token’s 128-d vector.
+
+**Example — where does the position vector appear?** Only in the **first** step, when we build **x**. For each position we do: **token_emb + position_emb** (add two 128-number vectors). Example for position 0 (character "t", token ID 54):
+
+- **Token embedding:** Look up ID 54 in the token table → one vector of 128 numbers, e.g. `[0.12, -0.34, 0.56, ..., 0.01]`.
+- **Position embedding:** Look up position 0 in the position table → one vector of 128 numbers, e.g. `[0.02, 0.11, -0.05, ..., 0.08]`.
+- **Add them (element-wise):** First number: 0.12 + 0.02 = 0.14. Second: -0.34 + 0.11 = -0.23. … Same for all 128 positions. Result = **x[0]**, the 128 numbers for "t" at position 0.
+
+So the **position vector** is just that second lookup (128 numbers per position index). We do **not** add position again inside the Q/K/V attention step; it’s already inside **x**.
+
+**Example — why must attention output be 128 numbers?** Each block does **output = x + Attention(x)** (residual). So we add two things:
+
+- **x:** 128 numbers per position.
+- **Attention(x):** must also be 128 numbers per position.
+
+If Attention(x) were 512 numbers, we couldn’t do "128 + 512" element-wise. So we design attention so its output is 128 — same as **x**.
+
+**Example — why 32 per head, not 128 per head?** We have 4 heads. If each head produced 128 numbers, we’d get 4 × 128 = **512** after concat, and we’d need an extra layer to squash 512 → 128. Instead we **split** 128 across heads: 128 ÷ 4 = **32 per head**. Each head outputs 32 numbers; we glue them back: 32 + 32 + 32 + 32 = **128**. So no extra squeeze: block stays 128 in, 128 out.
+
+**Recap (no math):** Step 0 gives block_size, 128-d, 4 heads. We pass a whole sequence as **n × 128**. We build it as token_emb + position_emb (position only here). Attention output is 128 so we can add it to **x**. Four heads each do 32 numbers, concat to 128.
+
 #### 3.1 Token + Positional Embeddings
 
 ```
