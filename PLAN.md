@@ -5,6 +5,7 @@
 ## Project Goal
 
 Build a fully functional mini-LLM that can:
+
 1. Learn from a story dataset using transformer architecture
 2. Generate coherent text with multiple sampling strategies
 3. Visualize what the model learns (attention maps, embeddings, loss curves)
@@ -12,22 +13,24 @@ Build a fully functional mini-LLM that can:
 
 **Philosophy**: Each step is a self-contained lesson. You will start with the simplest possible version, verify it works, then upgrade components one at a time — just like how the field evolved from the original Transformer (2017) to today's frontier models.
 
-**Note**: This is for educational purposes — we won't compete with GPT/Claude, but we'll use the same fundamental techniques and understand *why* each design choice was made.
+**Note**: This is for educational purposes — we won't herecompete with GPT/Claude, but we'll use the same fundamental techniques and understand *why* each design choice was made.
 
 ---
 
 ## Learning Milestones
 
-| Milestone | What You'll Understand | Step |
-|-----------|----------------------|------|
-| **M1** — First Token | How text becomes numbers and back | Steps 1-2 |
-| **M2** — Attention Click | How self-attention lets tokens "talk" to each other | Step 3a |
-| **M3** — First Loss Drop | How backpropagation teaches the model | Step 4 |
-| **M4** — Coherent Output | How generation works token-by-token | Step 5 |
-| **M5** — Modern Upgrades | Why RoPE, RMSNorm, SwiGLU replaced the originals | Step 6 |
-| **M6** — Visual Understanding | What attention heads actually learn | Step 7 |
-| **M7** — Efficient Inference | How KV-cache makes generation fast | Step 8 |
-| **M8** — Interactive Demo | Sharing your model with a web UI | Step 9 |
+
+| Milestone                     | What You'll Understand                              | Step      |
+| ----------------------------- | --------------------------------------------------- | --------- |
+| **M1** — First Token          | How text becomes numbers and back                   | Steps 1-2 |
+| **M2** — Attention Click      | How self-attention lets tokens "talk" to each other | Step 3a   |
+| **M3** — First Loss Drop      | How backpropagation teaches the model               | Step 4    |
+| **M4** — Coherent Output      | How generation works token-by-token                 | Step 5    |
+| **M5** — Modern Upgrades      | Why RoPE, RMSNorm, SwiGLU replaced the originals    | Step 6    |
+| **M6** — Visual Understanding | What attention heads actually learn                 | Step 7    |
+| **M7** — Efficient Inference  | How KV-cache makes generation fast                  | Step 8    |
+| **M8** — Interactive Demo     | Sharing your model with a web UI                    | Step 9    |
+
 
 ---
 
@@ -65,11 +68,13 @@ llm_basic/
 ## Step-by-Step Implementation Plan
 
 ### Step 0: Environment Setup
+
 **Script**: `src/config.py` + `pyproject.toml`
 
-**Package Manager**: [**uv**](https://docs.astral.sh/uv/) — the modern Python package & project manager from Astral (creators of Ruff). It replaces `pip`, `venv`, `pip-tools`, and `pyenv` in a single tool.
+**Package Manager**: **[uv](https://docs.astral.sh/uv/)** — the modern Python package & project manager from Astral (creators of Ruff). It replaces `pip`, `venv`, `pip-tools`, and `pyenv` in a single tool.
 
 **Why uv over pip?**
+
 - **10-100× faster** than pip for dependency resolution and installs
 - **Deterministic lockfile** (`uv.lock`) — everyone gets the exact same versions
 - **Manages Python versions** — no need for pyenv/conda/pyinstaller
@@ -78,6 +83,7 @@ llm_basic/
 - **Single binary, no dependencies** — install once, works everywhere
 
 **Install uv** (one-time):
+
 ```bash
 # Windows (PowerShell)
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
@@ -87,6 +93,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 **Project setup with uv**:
+
 ```bash
 # Initialize project (creates pyproject.toml, .python-version, etc.)
 uv init
@@ -106,7 +113,8 @@ uv add gradio                # Step 9: Web UI
 uv add tensorboard           # Optional: training dashboards
 ```
 
-**`pyproject.toml`** (what uv generates and manages):
+`**pyproject.toml**` (what uv generates and manages):
+
 ```toml
 [project]
 name = "llm-basic"
@@ -132,6 +140,7 @@ all = [
 ```
 
 **Running scripts with uv**:
+
 ```bash
 # uv automatically uses the project's virtual environment — no activate needed
 uv run python src/04_train.py
@@ -143,6 +152,7 @@ uv run python src/05_inference.py
 ```
 
 **Centralized Hyperparameters** (`src/config.py`):
+
 ```python
 from dataclasses import dataclass
 
@@ -196,10 +206,12 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 
 **DATA SETTINGS — How we feed text to the model**
 
-**`vocab_size`** — The dictionary size
-> Imagine you give a student a dictionary. `vocab_size` is how many unique "words" (in our case, unique characters like `a`, `b`, `!`, ` `) are in that dictionary. If your training text uses 65 unique characters, the vocab_size is 65. The model can only read and write characters it has seen in this dictionary.
+`**vocab_size`** — The dictionary size
 
-**`block_size = 64`** — The reading window (context length)
+> Imagine you give a student a dictionary. `vocab_size` is how many unique "words" (in our case, unique characters like `a`, `b`, `!`,  ``) are in that dictionary. If your training text uses 65 unique characters, the vocab_size is 65. The model can only read and write characters it has seen in this dictionary.
+
+`**block_size = 64**` — The reading window (context length)
+
 > This is how many characters the model can look at *at once* when predicting the next character. Think of it like reading through a small window — the model slides a window of 64 characters across the text and tries to predict what comes next.
 >
 > - `block_size = 64` → the model sees 64 characters of context at a time
@@ -221,7 +233,8 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 >
 > This is a fundamental limitation. With `block_size = 64`, the model can never learn patterns that span more than 64 characters. That's why real-world LLMs use much larger context windows — ChatGPT/Claude can see tens of thousands of tokens at once, letting them reference things from pages ago in a conversation.
 
-**`batch_size = 32`** — How many text windows to study at once
+`**batch_size = 32**` — How many text windows to study at once
+
 > This works together with `block_size`. Here's exactly what happens in one training step:
 >
 > 1. Pick 32 **random starting positions** in the training text
@@ -252,19 +265,62 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > ```
 >
 > **Why not process one window at a time?**
+>
 > - **Speed**: GPUs are designed to do many calculations in parallel. Processing 32 windows takes almost the same time as processing 1.
 > - **Stability**: Each single window gives a slightly different "lesson." Averaging the lessons from 32 windows gives a more reliable signal for how to improve. It's like asking 32 students what they think the answer is and taking the average, instead of relying on one student's possibly-wrong guess.
 >
 > **Tradeoffs**:
+>
 > - Bigger batch (64, 128) = smoother learning, but uses more memory
 > - Smaller batch (8, 16) = noisier learning, but fits on smaller hardware
 > - If you get an "out of memory" error, the first thing to try is reducing batch_size
+>
+> **What is the TARGET?**
+>
+> Yes — **the target is also a 64-character window**, just shifted by 1 position. Input and target are the same length (64); we just slide the target one step to the right.
+>
+> To form one (input, target) pair we need **65 consecutive characters** from the text: the first 64 are the input, and the "next 64" (starting at position 1) are the target.
+>
+> ```
+> Training text: "Once upon a time, in a land far away, there lived a young princess..."
+>
+> Pick random start position i (so we have at least 65 chars: i through i+64):
+>
+> Position:   i                            i+63   i+64
+> Input X:   |O|n|c|e| |u|p|o|n|...|a|w|a|y|      ← 64 chars: positions [i] to [i+63]
+>              ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓     ↓ ↓ ↓ ↓
+> Target Y:  |n|c|e| |u|p|o|n|...|a|w|a|y|?|     ← 64 chars: positions [i+1] to [i+64]
+>
+> X = text[i : i+64]       # 64 characters starting at i
+> Y = text[i+1 : i+65]    # the NEXT 64 characters (shifted by 1)
+>
+> Same length (64). Target is just "input shifted right by one character."
+> ```
+>
+> **Why 64 for both?** Because at EACH of the 64 positions in the input, we predict the NEXT character:
+>
+> ```
+> Position 0:  see "O"            → predict "n"
+> Position 1:  see "On"           → predict "c"
+> Position 2:  see "Onc"          → predict "e"
+> ...
+> Position 63: see "...y"         → predict "?"
+> ```
+>
+> So in one training step with `batch_size=32`:
+>
+> - We process **32 input windows** → shape `(32, 64)`
+> - We compare against **32 target windows** → shape `(32, 64)`
+> - The model makes **64 predictions per sequence** = **2,048 total predictions** in parallel!
+>
+> This is what makes language models efficient — they learn from every position in every sequence simultaneously.
 
 ---
 
 **MODEL ARCHITECTURE — The shape of the model's "brain"**
 
-**`n_embd = 128`** — Embedding dimension (how rich each character's representation is)
+`**n_embd = 128`** — Embedding dimension (how rich each character's representation is)
+
 > Computers can't understand letters directly — they need numbers. An "embedding" converts each character into a list of numbers. `n_embd` is how long that list is.
 >
 > Think of it this way: if you had to describe the letter "A" to an alien using exactly 128 numbers, you could capture a lot of information — is it a vowel? uppercase? how often does it appear? what letters usually come after it? More numbers = richer description = the model can learn subtler patterns.
@@ -279,7 +335,8 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 >
 > - GPT-3 uses `n_embd = 12,288`. Ours is 128 — much smaller, but enough to learn.
 
-**`n_layer = 6`** — Number of transformer layers (how deep the thinking goes)
+`**n_layer = 6**` — Number of transformer layers (how deep the thinking goes)
+
 > A "layer" is one round of processing. Each layer takes the output of the previous layer, processes it further, and passes the result to the next layer. Think of it as re-reading a sentence multiple times — each pass *could* notice something new.
 >
 > ```
@@ -305,10 +362,12 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > We do **not** program what each layer learns. There's no line of code that says "Layer 1, learn grammar" or "Layer 5, learn story structure." All 6 layers have identical code. The only thing driving what they learn is the training signal — "you predicted the wrong next character, adjust yourself."
 >
 > However, researchers have used interpretability tools (probing classifiers, activation analysis) to peek inside trained models and found a **rough tendency**:
+>
 > - **Earlier layers** (closer to input) tend to pick up simpler, more local patterns
 > - **Later layers** (closer to output) tend to pick up more abstract, longer-range patterns
 >
 > But this is a *tendency*, not a rule. In practice:
+>
 > - A single layer often does many things simultaneously
 > - The same pattern might be partially handled by multiple layers
 > - Different training runs with different random seeds can produce different internal organizations
@@ -321,8 +380,8 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > More layers = potentially deeper understanding, but slower training and more memory.
 > GPT-3 has 96 layers. Ours has 6 — plenty for learning from short stories.
 
-**`n_head = 4`** — Number of attention heads (different ways of paying attention)
->
+`**n_head = 4`** — Number of attention heads (different ways of paying attention)
+
 > This one needs a longer explanation. Before understanding *multiple* heads, you need to understand what *one* head of attention does.
 >
 > ---
@@ -435,6 +494,7 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > **Important caveats (same as with layers):**
 >
 > The labels I used above ("spelling", "meaning", "word boundaries", "repetition") are **made up for illustration**. In reality:
+>
 > - We don't assign roles to heads — they learn on their own
 > - The actual attention scores would look messier than my clean example
 > - Some heads learn interpretable patterns, others don't
@@ -466,17 +526,20 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > The model takes a **weighted average** of information from all characters — 33% from `"a"`, 25% from `"m"`, 6% from `"t"`, 2% from `"T"`, etc. — and that blended signal feeds into the rest of the network to produce the final prediction. This is why the mechanism is called "attention" — it literally pays more attention to the relevant parts and less to the irrelevant parts.
 >
 > **Why 4 heads and not 1 or 100?**
+>
 > - `n_head = 1` → only one attention pattern per layer (limited)
 > - `n_head = 4` → four parallel patterns (good balance for our small model)
 > - `n_head = 128` → would mean each head only gets 128/128 = 1 number to work with (too small to be useful)
 > - Rule of thumb: `n_embd / n_head` should be at least 16-32 for each head to have enough capacity
 
-**`dropout = 0.1`** — Random forgetting (prevents memorizing)
+`**dropout = 0.1`** — Random forgetting (prevents memorizing)
+
 > During training, the model randomly "turns off" 10% of its neurons at each step. This sounds destructive — why would disabling parts of the model help? Let's look at a concrete example.
 >
 > **The problem dropout solves: overfitting (memorizing instead of learning)**
 >
 > Imagine our training data contains these sentences:
+>
 > ```
 > "The cat sat on the mat."
 > "The dog sat on the rug."
@@ -484,10 +547,12 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > ```
 >
 > What we WANT the model to learn:
+>
 > - After "The [animal] sat on the", predict a reasonable surface/place
 > - General pattern: [animal] + [sat on] + [surface]
 >
 > What can go WRONG without dropout:
+>
 > - The model has 1.2 million parameters but maybe only 10,000 words of training data
 > - It has more than enough capacity to memorize every single sentence exactly
 > - Instead of learning "animals sit on surfaces", it memorizes "character #4,521 in the training data is 'm'"
@@ -530,15 +595,18 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 
 **TRAINING SETTINGS — How the model studies**
 
-**`max_iters = 5000`** — Total training steps
+`**max_iters = 5000`** — Total training steps
+
 > One "iteration" = the model looks at one batch of data, makes predictions, checks how wrong it was, and adjusts itself. 5000 iterations means 5000 rounds of practice.
 >
 > Think of it as doing 5000 practice tests. Early iterations = wild guessing. Later iterations = the model has learned real patterns.
 
-**`learning_rate = 3e-4`** — Step size (how much to adjust each time)
+`**learning_rate = 3e-4`** — Step size (how much to adjust each time)
+
 > After each practice round, the model needs to adjust its internal settings. The learning rate controls *how big* each adjustment is.
 >
 > `3e-4` means `0.0003` — a very small number. This is deliberate:
+>
 > - **Too big** (like 0.01): The model overcorrects wildly, like a student who panics after every mistake and rewrites everything
 > - **Too small** (like 0.000001): The model barely changes, like a student who ignores feedback
 > - **Just right** (0.0003): Small, steady improvements each round
@@ -549,29 +617,36 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > learning_rate = 0.000001 → Too small — model barely learns, wastes time
 > ```
 
-**`warmup_iters = 100`** — Gentle start
+`**warmup_iters = 100**` — Gentle start
+
 > For the first 100 iterations, the learning rate starts at nearly zero and gradually increases to `3e-4`. This is like warming up before exercise — jumping straight into a high learning rate when the model's weights are still random can cause instability.
 
-**`min_lr = 3e-5`** — Slow down near the end
+`**min_lr = 3e-5**` — Slow down near the end
+
 > As training progresses, the learning rate gradually decreases from `3e-4` down to `3e-5` (10× smaller). This is like taking smaller steps as you get closer to the answer — big adjustments early on, fine-tuning later.
 
-**`weight_decay = 0.1`** — Prevent laziness
+`**weight_decay = 0.1**` — Prevent laziness
+
 > This gently pushes the model's internal numbers toward zero, preventing them from growing unnecessarily large. It's a form of regularization — keeping the model "lean" so it learns general patterns instead of overly specific ones.
 
-**`eval_interval = 250`** — How often to check progress
+`**eval_interval = 250**` — How often to check progress
+
 > Every 250 training steps, we pause and test the model on text it has *never seen* (the validation set). This tells us if the model is actually learning vs. just memorizing.
 
-**`eval_iters = 200`** — How thorough each check is
+`**eval_iters = 200`** — How thorough each check is
+
 > When we do check progress, we test on 200 different batches and average the results. More batches = more reliable measurement of how good the model is.
 
 ---
 
 **GENERATION SETTINGS — How the model writes text**
 
-**`temperature = 0.8`** — Creativity dial
+`**temperature = 0.8`** — Creativity dial
+
 > Controls how "random" the model's word choices are when generating text.
 >
 > Think of it as a confidence dial:
+>
 > - `temperature = 0.1` → Very confident, always picks the most likely next character. Output is repetitive but safe: *"the the the the"*
 > - `temperature = 0.8` → Mostly confident but sometimes surprises you. Good balance.
 > - `temperature = 2.0` → Very random, often picks unlikely characters. Output is creative but often nonsensical: *"th$e xqat zza"*
@@ -585,32 +660,61 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 > temperature = 2.0  →  could be anything, even "x" (chaotic)
 > ```
 
-**`top_k = 50`** — Only consider the best options
+`**top_k = 50**` — Only consider the best options
+
 > Before picking the next character, throw away everything except the top 50 most likely candidates. This removes obviously bad choices (like putting "Z" after "th").
 
-**`top_p = 0.9`** — Smart cutoff (nucleus sampling)
+`**top_p = 0.9**` — Smart cutoff (nucleus sampling)
+
 > Instead of a fixed number of candidates (top_k), keep adding candidates from most-likely to least-likely until their combined probability reaches 90%. When the model is very confident, this might mean only 2-3 options. When it's uncertain, it might keep 40+. It adapts automatically.
 
-**`repetition_penalty = 1.1`** — Don't repeat yourself
-> Reduces the probability of characters/words that already appeared recently. Without this, models tend to get stuck in loops: *"the cat the cat the cat the cat..."*
+`**repetition_penalty = 1.1**` — Don't repeat yourself
 
-**`max_new_tokens = 200`** — When to stop writing
+> Reduces the probability of tokens that already appeared recently in the generated text. Without this, models often get stuck in loops: *"the cat the cat the cat the cat..."*
+>
+> **Why does repetition happen in the first place?**
+>
+> The model was trained with a single objective: *predict the next token*. It was never explicitly told "don't say the same thing again." So several things push it toward repeating:
+>
+> 1. **Frequent tokens stay likely** — In normal text, common words like "the", "a", "and" appear over and over. The model learned that after many contexts, "the" is a safe guess. So when it has already generated "the", the next-token distribution might still put high probability on "the" again, because in training data "the the" sometimes appears (e.g. "the ... the") and very common words get high probability in general.
+> 2. **Short loops are consistent** — Once the model outputs "the cat ", the context looks a lot like "the cat " again. So it may assign high probability to "the" again (starting "the cat the cat..."). The prediction is locally consistent — it's a plausible "next token" — but globally it's a boring loop.
+> 3. **No built-in "memory" of what was just said** — The model only sees the sequence so far. It has no separate signal that says "you just said this, try something different." So if "cat" is a likely next token in many contexts, it can keep picking "cat" again and again.
+> 4. **Small models repeat more** — Our tiny model has limited capacity. When it finds a pattern that works a bit ("the cat" is valid English), it may overuse it instead of exploring other options.
+>
+> ```
+> Without penalty:
+>   Generated: "Once upon a time the cat sat on the mat. The cat was happy. The cat..."
+>   The model keeps choosing "the" and "cat" because they're still high-probability next tokens.
+>
+> With repetition_penalty = 1.1:
+>   We divide the probability of any token that already appeared by 1.1 (or apply a stronger penalty the more often it appeared).
+>   So "the" and "cat" get down-weighted → the model is nudged to pick different words.
+>   Generated: "Once upon a time the cat sat on the mat. It was happy. It purred..."
+> ```
+>
+> **How it works (conceptually):** Before sampling, we look at the tokens we've already generated. For each candidate next token, if it appeared recently, we reduce its probability (e.g. divide by 1.1, or by a factor that grows with how many times it appeared). So repeated tokens become less likely and the model is encouraged to say something new.
+
+`**max_new_tokens = 200`** — When to stop writing
+
 > The maximum number of characters the model will generate per response. Without a limit, it would write forever.
 
 ---
 
 **SYSTEM SETTINGS — Hardware and reproducibility**
 
-**`device = "auto"`** — Where to run the computation
+`**device = "auto"`** — Where to run the computation
+
 > - `"cuda"` → NVIDIA GPU (fastest, 10-100× faster than CPU)
 > - `"mps"` → Apple Silicon GPU (Mac M1/M2/M3)
 > - `"cpu"` → Regular processor (slowest, but always available)
 > - `"auto"` → Automatically picks the best available option
 
-**`compile_model = False`** — Speed optimization
+`**compile_model = False`** — Speed optimization
+
 > When set to `True`, PyTorch analyzes the entire model and optimizes it as one unit, making training ~2× faster. We keep it off by default because it requires PyTorch 2.0+ and adds startup time. Turn it on once you've verified everything works.
 
-**`seed = 42`** — Reproducibility
+`**seed = 42`** — Reproducibility
+
 > Neural networks use random numbers (for initialization, dropout, batching). Setting a seed means the "random" numbers are the same every time you run the code. This way, if you and a friend both run the same code, you'll get identical results. (42 is a tradition in programming — a reference to *The Hitchhiker's Guide to the Galaxy*.)
 
 ---
@@ -619,13 +723,15 @@ Don't worry if the names above look intimidating. Every single one maps to a sim
 
 These are all `False` by default. You'll start with the classical 2017 architecture, then flip these on one-by-one in Step 6 to see how modern LLMs improved on the original design.
 
-| Flag | What it changes | When to enable |
-|------|----------------|----------------|
-| `use_rope` | How the model knows word position in a sentence | Step 6.1 |
-| `use_rmsnorm` | How the model normalizes numbers between layers | Step 6.2 |
-| `use_swiglu` | How neurons "activate" inside each layer | Step 6.3 |
-| `use_gqa` | How attention heads share work | Step 6.4 |
-| `use_kv_cache` | How fast the model generates text | Step 6.5 |
+
+| Flag           | What it changes                                 | When to enable |
+| -------------- | ----------------------------------------------- | -------------- |
+| `use_rope`     | How the model knows word position in a sentence | Step 6.1       |
+| `use_rmsnorm`  | How the model normalizes numbers between layers | Step 6.2       |
+| `use_swiglu`   | How neurons "activate" inside each layer        | Step 6.3       |
+| `use_gqa`      | How attention heads share work                  | Step 6.4       |
+| `use_kv_cache` | How fast the model generates text               | Step 6.5       |
+
 
 Don't worry about understanding these yet — each one gets a full explanation in Step 6.
 
@@ -652,7 +758,233 @@ That's about 1.2 million parameters — tiny by industry standards
 (GPT-3 has 175 BILLION), but perfect for learning.
 ```
 
+**What are "Attention," "Feed-forward," and "Layer norms"?**
+
+These are the three main building blocks inside each transformer layer. Here’s what each one is and why it has that many parameters.
+
+---
+
+**1. Attention layer (Q, K, V, O)** -- "Who should I look at?"
+
+**Terms for the vector at each position**
+
+- **Initial / static embedding** — Fixed lookup by token (or character). Same token gives the same vector every time; no context.
+- **Hidden state** — The vector at a position after one or more layers (e.g. "hidden state at layer 2, position 5"). Standard in RNN/Transformer.
+- **Representation** or **contextual representation** — Same idea: the current vector at that position after processing. "Contextual" means it depends on surrounding tokens, not just the token itself.
+
+
+So: **static embedding** = fixed per token; **hidden state** (or **representation**) = current vector at that position after processing.
+
+
+
+**Attention in one formula block**
+
+Input: at each position we have a **hidden state** (or representation) of dimension `n_embd` (e.g. 128). We multiply it by three learned matrices to get Q, K, V:
+
+- **Q** = hidden_state × W_Q   (Query)
+- **K** = hidden_state × W_K   (Key)
+- **V** = hidden_state × W_V   (Value)
+
+Then, for each position whose output we want (e.g. the last position), we:
+
+1. **Scores:** For each position j, compute `score_j = Q · K_j` (dot product). In practice we often scale by √d before the next step.
+2. **Weights:** Apply softmax to the scores so they sum to 1: `weights = softmax(scores)`.
+3. **Output:** Return the weighted sum of the V vectors, not a single V:  
+   `output = weight_0×V_0 + weight_1×V_1 + … + weight_{63}×V_63`
+
+So we **use** all V vectors and **return** that weighted combination. In short: **scores = Q·K → softmax → weights → output = Σ (weight_j × V_j)**.
+
+
+
+This is the part that computes the attention scores and the weighted mix (the mechanism we already discussed in the `n_head` section). But how does the model actually *compute* those percentage scores? That's where Q, K, V come in.
+
+Remember our example: `"The cat sat on the ma[?]"` -- the model needed to score every earlier character by relevance. But each character starts as just a 128-number embedding vector. The model needs a way to compare them. It does this by transforming each character's vector into **three different versions**, each with a specific purpose.
+
+**Think of it like a library:**
+
+Imagine each character is a person standing in a library. To figure out who to talk to:
+
+- Each person writes a **question** on a card: "I'm looking for ___" -- this is **Q (Query)**
+- Each person wears a **name tag** describing what they know: "I contain ___" -- this is **K (Key)**
+- Each person holds a **notebook** with useful info to share: "Here's my info: ___" -- this is **V (Value)**
+
+To compute attention scores, you **match questions (Q) against name tags (K)**. If your question matches someone's name tag well, that person gets a high score. Then you **read the notebooks (V)** of the high-scoring people.
+
+**What does "match" mean, and how do we "read the notebooks"? (More detail)**
+
+- **Where does the Query Q come from? (Why do we have a Q for "[?]"?)**
+We don't have an embedding for the next character "[?]" — it doesn't exist yet. What we have is **64 positions** (0 to 63), each with a character and an embedding: position 0 = "T", position 1 = "h", ..., position 63 = "a" (the last character in "The cat sat on the ma"). For **each** of these positions we compute a Q, K, and V from that position's embedding. So the **Query we use to predict what comes after "a"** is **the Q at the last position** — position 63 — which comes from the embedding of "a". In other words: the last character's embedding is turned into a Query that asks "which of the previous positions (including me) have the right information to help predict the next character?" So when we say "for the position we're predicting" we really mean "for the **last** position in the window" (the one right before the next token). That last position has a character ("a"), an embedding, and therefore a Q. We use that Q to look at all the Keys and blend the Values; the result at that last position is what we use to predict the next token.
+- **Matching Q and K**  
+So we have one **Query** vector Q — it's the Q of the **last position** (e.g. from "a"). For every position (including that one) we have a **Key** vector K. "Match" means we measure how similar Q is to each K. The math used is the **dot product**: for each position j we compute  
+`score_j = Q · K_j`  
+(sum the products of the 128 numbers in Q and the 128 numbers in K_j). If Q and K_j point in similar directions, the dot product is large (high score); if they're very different, it's small or negative (low score). So we get one raw number per position — "how relevant is this position to me?"
+- **Turning scores into percentages**  
+Those raw scores can be any size and don't sum to 1. We pass them through **softmax**:  
+  - exponentiate each score,  
+  - then divide each by the sum of all of them.  
+  After softmax, we have one number per position that is between 0 and 1 and **all of them add up to 100%**. Those are the "attention weights" (the 33%, 25%, 6%, 2%, ... from our example).
+- **Reading the notebooks (V) — the math step by step**  
+Each position has a **Value** vector V — a list of 128 numbers (the "notebook"). We also have one **weight** (percentage) per position from the previous step, e.g. 0.33 for "a", 0.25 for "m", 0.06 for "t", ..., and they sum to 1.0.
+**"Blend" means: weighted sum.** We form one new vector of 128 numbers. For **each of the 128 slots** we do:
+  - Take that slot's value from position 0, multiply by weight 0; add  
+  - that slot's value from position 1, multiply by weight 1; add  
+  - … same for all positions.
+  So for slot (dimension) `d`:
+  `result[d] = w_0 * V_0[d] + w_1 * V_1[d] + w_2 * V_2[d] + ... + w_63 * V_63[d]`
+  We do this for `d = 0, 1, 2, ..., 127`. So we get one number per dimension, i.e. one 128-d vector. That vector is the "blended notebook" — mostly from positions with high weight (e.g. "a" and "m") but with a small contribution from every position. That blended vector is what the model uses for the next step.
+  **Minimal numerical example (3 positions, 4 dimensions):**
+  Suppose we have only 3 positions and V has 4 numbers (instead of 64 and 128). Weights from softmax: position 0 = 0.5, position 1 = 0.3, position 2 = 0.2 (sum = 1.0). Value vectors:
+  ```
+  V_0 = [1.0,  0.0,  0.5, -0.2]   (position 0, weight 0.5)
+  V_1 = [0.2,  0.8,  0.1,  0.3]   (position 1, weight 0.3)
+  V_2 = [0.0,  0.1,  0.4,  0.6]   (position 2, weight 0.2)
+  ```
+  Blend (weighted sum) for each dimension:
+  ```
+  result[0] = 0.5×1.0 + 0.3×0.2 + 0.2×0.0  = 0.50 + 0.06 + 0.00  = 0.56
+  result[1] = 0.5×0.0 + 0.3×0.8 + 0.2×0.1  = 0.00 + 0.24 + 0.02  = 0.26
+  result[2] = 0.5×0.5 + 0.3×0.1 + 0.2×0.4  = 0.25 + 0.03 + 0.08  = 0.36
+  result[3] = 0.5×(-0.2) + 0.3×0.3 + 0.2×0.6 = -0.10 + 0.09 + 0.12 = 0.11
+  ```
+  So the blended vector is `result = [0.56, 0.26, 0.36, 0.11]`. Position 0 had the biggest weight (0.5), so its numbers (1.0, 0.0, 0.5, -0.2) dominate the result; positions 1 and 2 add smaller contributions. In the real model we do the same thing with 64 positions and 128 dimensions: one weighted sum per dimension.
+
+**Tiny numerical example (idea only):**
+
+```
+Last position ("a") has  Q = [0.5, 0.1, -0.3, ...]   (Q comes from "a"'s embedding)
+
+Position "a" has  K_a = [0.6, 0.0, -0.2, ...]   →  Q·K_a = 0.36  (high — similar direction)
+Position "m" has  K_m = [0.4, 0.2, -0.1, ...]   →  Q·K_m = 0.28
+Position "T" has  K_T = [-0.2, 0.8, 0.1, ...]   →  Q·K_T = -0.02 (low — different direction)
+
+Raw scores:  [0.36, 0.28, ..., -0.02, ...]
+      ↓  softmax (make positive, sum to 1)
+Weights:     [0.33, 0.25, ..., 0.02, ...]   (33%, 25%, ..., 2%, ...)
+
+Result = 0.33×V_a + 0.25×V_m + ... + 0.02×V_T + ...
+       = one 128-d vector, heavy on "a" and "m"
+```
+
+So: **Q and K decide who gets weight (scores → percentages); V is what we actually blend (the content).**
+
+**Concretely, here's what happens for position [?] in `"The cat sat on the ma[?]"`:**
+
+```
+Step 1: Transform each character's embedding into Q, K, V vectors
+        using three separate learned weight matrices (each 128 x 128):
+
+        Character "a" (the last one before [?]):
+          embedding: [0.23, -0.87, 0.45, ...]   (128 numbers)
+                          | multiply by W_Q matrix
+          Q_a =          [0.51, 0.12, -0.33, ...]  (128 numbers) -- its "question"
+                          | multiply by W_K matrix
+          K_a =          [-0.22, 0.88, 0.07, ...]  (128 numbers) -- its "name tag"
+                          | multiply by W_V matrix
+          V_a =          [0.67, -0.41, 0.55, ...]  (128 numbers) -- its "notebook"
+
+        (Same transformation for every other character: "T", "h", "e", "c", "t", ...)
+
+Step 2: Compute scores by comparing Q of [?] with K of every earlier character.
+        High match between Q and K = high score.
+
+        score("a", [?]) = Q_[?] . K_a = high   (33%)
+        score("m", [?]) = Q_[?] . K_m = high   (25%)
+        score("t", [?]) = Q_[?] . K_t = medium (6%)
+        score("T", [?]) = Q_[?] . K_T = low    (2%)
+        ...
+        (These are the percentage scores from our earlier example!)
+
+Step 3: Use scores to take a weighted average of V vectors.
+
+        result = 33% x V_a  +  25% x V_m  +  6% x V_t  +  2% x V_T  + ...
+                                    |
+                 A single 128-number vector that blends information
+                 mostly from "a" and "m" (the high-scoring characters)
+```
+
+**Yes — scores are only over the block.** When we say "compare Q of [?] with K of every earlier character," that "every" means **every position inside the current context window**, i.e. exactly **block_size** positions (64 in our config). There are no Q, K, or V vectors for anything outside that window; the model never sees or scores positions beyond block_size. So for each of the 64 positions, we compute up to 64 attention scores (with causal masking: position 0 scores 1 key, position 1 scores 2 keys, ..., position 63 scores 64 keys). The attention layer never looks beyond block_size.
+
+**So the three matrices do three different jobs:**
+
+
+| Matrix | Name  | Size      | What it produces                 | Purpose                  |
+| ------ | ----- | --------- | -------------------------------- | ------------------------ |
+| W_Q    | Query | 128 x 128 | A "question" vector per position | "What am I looking for?" |
+| W_K    | Key   | 128 x 128 | A "name tag" vector per position | "What do I contain?"     |
+| W_V    | Value | 128 x 128 | A "notebook" vector per position | "What info do I share?"  |
+
+
+The **Q** and **K** vectors are only used to compute the scores (they get compared, then thrown away). The **V** vectors carry the actual information that gets mixed by those scores.
+
+**What about O?**
+
+**W_O (Output)** is a fourth matrix (also 128 x 128). Remember that with `n_head = 4`, each head produces a small 32-number result. **O** takes the 4 concatenated head outputs (4 x 32 = 128 numbers) and mixes them together:
+
+```
+Head 1 result: [32 numbers] --+
+Head 2 result: [32 numbers] --+-- concatenate --> [128 numbers] --> x W_O --> [128 numbers]
+Head 3 result: [32 numbers] --+                                              final output
+Head 4 result: [32 numbers] --+
+```
+
+**Total: 4 matrices, each 128 x 128 = 65,536 parameters** for the attention layer.
+
+The key insight: **Q, K, V, O are NOT hand-designed**. They start as random numbers. During training, the model adjusts them so that the Q-K comparisons produce useful attention scores. The model *discovers* what "questions" and "name tags" work best for predicting the next character.
+
+**Does each position have its own Q, K, V? And do they change or stay static?**
+
+- **Yes — each position has its own Q, K, V vectors.** For each of the 64 positions we take that position's embedding (128 numbers) and multiply it by the same three matrices W_Q, W_K, W_V. So we get 64 different Q vectors, 64 different K vectors, and 64 different V vectors — one set per position. The *matrices* W_Q, W_K, W_V are shared; the *vectors* are different because each position has a different embedding.
+- **What changes vs what stays static:**
+  - **Q, K, V vectors** — Not stored. They are **recomputed on every forward pass** from the current embeddings and the current weight matrices. So they change whenever the input sequence changes (different text, different batch).
+  - **W_Q, W_K, W_V, W_O (the weight matrices)** — These are the **learned parameters**. They start random, get **updated during training** (via backpropagation), and after training we **freeze them** (keep them static). At inference time we use these fixed weights to compute Q, K, V from whatever input the user sends.
+
+So: the *weights* are learned once and then stay static; the *Q, K, V vectors* are computed on the fly each time from the input and those fixed weights.
+
+**2. Feed-forward (FFN)** — "Think about what you just saw"
+
+After attention has mixed information from other positions, the feed-forward layer processes **each position by itself** (no cross-position lookups here). It’s a small 2‑layer network per position:
+
+```
+Input (128 numbers) 
+    → Linear: 128 → 512   (expand)
+    → ReLU
+    → Linear: 512 → 128   (compress back)
+    → Output (128 numbers)
+```
+
+- First matrix: 128 × 512 = 65,536 (plus bias terms we’re not counting separately here).
+- Second matrix: 512 × 128 = 65,536.
+- So **2 × 128 × 512 ≈ 131,072** parameters. The "4" in the formula is the expansion ratio: 128 × 4 = 512. So "feed-forward" = this per-position MLP that adds most of the parameters inside each layer.
+
+---
+
+**3. Layer norms** — "Keep numbers in a healthy range"
+
+Layer norm doesn’t mix different positions; it **normalizes** the 128 numbers at each position so they don’t grow too big or too small (mean ~0, scale ~1). That keeps training stable.
+
+- We have **2** layer norms per transformer block: one before attention, one before feed-forward.
+- Each layer norm has a scale (and usually a shift) **per dimension**: 128 numbers for scale, 128 for shift → 256 parameters per norm, so **2 × 128 = 256** (often written as "2 × n_embd" when we only count the main learnable scale/shift).
+
+So "layer norms" = these two small normalizers (one before attention, one before feed-forward) that use very few parameters compared to attention and feed-forward.
+
+---
+
+**Summary**
+
+
+| Block             | Role                                      | Parameters (per layer) |
+| ----------------- | ----------------------------------------- | ---------------------- |
+| Attention Q,K,V,O | Look at other positions, blend by scores  | 65,536                 |
+| Feed-forward      | Per-position "thinking" (expand → shrink) | 131,072                |
+| Layer norms       | Stabilize activations (scale/shift)       | 256                    |
+
+
+So in one transformer layer: **attention** does the "look around" step, **feed-forward** does the "think per position" step, and **layer norms** keep values in a good range. You’ll implement all three in Step 3.
+
+---
+
 **Why these values?**
+
 - `n_embd=128` and `n_layer=6` gives ~1.2M parameters — small enough to train on CPU in minutes, large enough to learn real patterns from stories.
 - `learning_rate=3e-4` with warmup + cosine decay is the standard recipe from GPT-2/3 papers.
 - `dropout=0.1` prevents overfitting on our small dataset.
@@ -661,9 +993,11 @@ That's about 1.2 million parameters — tiny by industry standards
 ---
 
 ### Step 1: Data Preparation
+
 **Script**: `src/01_data_preparation.py`
 
 **What it does**:
+
 - Load story dataset from `data/stories.txt`
 - Analyze vocabulary (unique characters), print statistics
 - Create mappings: `char -> index` and `index -> char`
@@ -674,27 +1008,32 @@ That's about 1.2 million parameters — tiny by industry standards
 **Output**: Processed data, vocab size, encode/decode functions
 
 **Key Concepts to Learn**:
+
 - **Tokenization** is the bridge between human text and model numbers
 - **Character-level tokenization**: simplest approach — each unique character gets an integer ID
 - **Vocabulary**: the complete set of tokens the model knows
 - **Train/val split**: essential to detect overfitting
 
 **Try It Yourself**:
-- [ ] What happens if you use a tiny dataset (100 words)? A large one?
-- [ ] Count how many unique characters your dataset has. Why does this matter for model size?
+
+- What happens if you use a tiny dataset (100 words)? A large one?
+- Count how many unique characters your dataset has. Why does this matter for model size?
 
 ---
 
 ### Step 2: Tokenizer
+
 **Script**: `src/02_tokenizer.py`
 
 **What it does**:
+
 - Implement `encode(text) -> list[int]`
 - Implement `decode(tokens) -> str`
 - Implement `get_batch()` for creating training batches
 - Create input-target pairs for next-token prediction
 
 **Key Concepts to Learn**:
+
 - **Next-token prediction**: the fundamental task — given tokens [1,2,3], predict [2,3,4]
 - **Batching**: process multiple sequences in parallel for GPU efficiency
 - **Context window** (`block_size`): maximum number of tokens the model can "see"
@@ -716,12 +1055,14 @@ At EACH position, the model predicts the next token:
 ```
 
 **Try It Yourself**:
-- [ ] Encode "Hello World" and decode it back. Is it lossless?
-- [ ] What is the shape of a training batch? Why `(batch_size, block_size)`?
+
+- Encode "Hello World" and decode it back. Is it lossless?
+- What is the shape of a training batch? Why `(batch_size, block_size)`?
 
 ---
 
 ### Step 3: Transformer Model Architecture (Classical)
+
 **Script**: `src/03_model.py`
 
 **What it implements** — building blocks from smallest to largest:
@@ -820,29 +1161,33 @@ Sample next token
 ```
 
 **Try It Yourself**:
-- [ ] Count the model's total parameters. Where do most parameters live?
-- [ ] What happens if you set `n_head=1`? How about `n_layer=1`?
-- [ ] Remove the causal mask — can the model still learn? (Hint: yes, but it's useless for generation)
+
+- Count the model's total parameters. Where do most parameters live?
+- What happens if you set `n_head=1`? How about `n_layer=1`?
+- Remove the causal mask — can the model still learn? (Hint: yes, but it's useless for generation)
 
 ---
 
 ### Step 4: Training Loop
+
 **Script**: `src/04_train.py`
 
 **What it does**:
+
 1. Initialize model with random weights
 2. Set up AdamW optimizer with learning rate schedule
 3. Training loop:
-   - Sample a random batch of data
-   - Forward pass: compute predictions and loss
-   - Backward pass: compute gradients via backpropagation
-   - Update weights with optimizer
-   - Periodically evaluate on validation set
-   - Generate sample text to monitor quality
-   - Log metrics to TensorBoard (optional)
+  - Sample a random batch of data
+  - Forward pass: compute predictions and loss
+  - Backward pass: compute gradients via backpropagation
+  - Update weights with optimizer
+  - Periodically evaluate on validation set
+  - Generate sample text to monitor quality
+  - Log metrics to TensorBoard (optional)
 4. Save best model checkpoint
 
 **Learning Rate Schedule** (modern standard):
+
 ```
 Learning Rate
 │
@@ -858,6 +1203,7 @@ Learning Rate
 Linear warmup for stability, then cosine decay to a minimum LR. This is the standard schedule used in GPT-2, GPT-3, LLaMA, and most modern LLMs.
 
 **Key Concepts to Learn**:
+
 - **Cross-entropy loss**: measures how far predictions are from true next tokens
 - **Backpropagation**: chain rule applied through the entire network
 - **AdamW**: Adam with decoupled weight decay — the default optimizer for transformers
@@ -865,6 +1211,7 @@ Linear warmup for stability, then cosine decay to a minimum LR. This is the stan
 - **Overfitting detection**: when train loss drops but val loss rises
 
 **Training Output**:
+
 ```
 Iter    0 | Train loss: 4.174 | Val loss: 4.171 | LR: 0.000003
 Iter  250 | Train loss: 2.483 | Val loss: 2.511 | LR: 0.000300
@@ -874,32 +1221,38 @@ Sample @ iter 500: "Once upon a time there was a little girl who lived..."
 ```
 
 **Try It Yourself**:
-- [ ] Plot training vs validation loss. Where does overfitting start?
-- [ ] Try `learning_rate=0.01` — what happens? Why?
-- [ ] Try `learning_rate=0.00001` — what changes?
-- [ ] Remove warmup — is training less stable?
+
+- Plot training vs validation loss. Where does overfitting start?
+- Try `learning_rate=0.01` — what happens? Why?
+- Try `learning_rate=0.00001` — what changes?
+- Remove warmup — is training less stable?
 
 ---
 
 ### Step 5: Inference / Generation
+
 **Script**: `src/05_inference.py`
 
 **What it does**:
+
 - Load trained model checkpoint
 - Interactive command-line chat interface
 - Multiple sampling strategies:
 
 **Sampling Strategies** (from simplest to most sophisticated):
 
-| Strategy | Description | Tradeoff |
-|----------|-------------|----------|
-| **Greedy** | Always pick highest-probability token | Deterministic but repetitive |
-| **Temperature** | Scale logits by T before softmax | T<1 = focused, T>1 = creative |
-| **Top-k** | Only consider top k tokens | Removes low-probability noise |
-| **Top-p (nucleus)** | Only consider tokens summing to p probability mass | Adaptive — fewer options when model is confident |
-| **Repetition penalty** | Reduce probability of recently generated tokens | Prevents loops |
+
+| Strategy               | Description                                        | Tradeoff                                         |
+| ---------------------- | -------------------------------------------------- | ------------------------------------------------ |
+| **Greedy**             | Always pick highest-probability token              | Deterministic but repetitive                     |
+| **Temperature**        | Scale logits by T before softmax                   | T<1 = focused, T>1 = creative                    |
+| **Top-k**              | Only consider top k tokens                         | Removes low-probability noise                    |
+| **Top-p (nucleus)**    | Only consider tokens summing to p probability mass | Adaptive — fewer options when model is confident |
+| **Repetition penalty** | Reduce probability of recently generated tokens    | Prevents loops                                   |
+
 
 **Generation Process**:
+
 ```
 User Input: "Once upon a time"
     ↓
@@ -919,18 +1272,21 @@ Decode → "Once upon a time a little girl named Rose..."
 ```
 
 **Try It Yourself**:
-- [ ] Generate with temperature=0.1 vs temperature=2.0 — describe the difference
-- [ ] What happens with top_k=1? (same as greedy)
-- [ ] Try top_p=0.5 vs top_p=0.95 — which gives better outputs?
+
+- Generate with temperature=0.1 vs temperature=2.0 — describe the difference
+- What happens with top_k=1? (same as greedy)
+- Try top_p=0.5 vs top_p=0.95 — which gives better outputs?
 
 ---
 
 ### Step 6: Modern Architecture Upgrades
+
 **Script**: `src/03_model_modern.py`
 
 This is where we upgrade from the 2017 "Attention Is All You Need" architecture to techniques used in 2024-2026 era models (LLaMA 3, Gemma 2, Mistral, DeepSeek).
 
 #### 6.1 RoPE — Rotary Position Embeddings
+
 **Replaces**: Learned positional embeddings
 
 ```
@@ -945,6 +1301,7 @@ Why better:
 ```
 
 #### 6.2 RMSNorm — Root Mean Square Normalization
+
 **Replaces**: LayerNorm
 
 ```
@@ -958,6 +1315,7 @@ Why better:
 ```
 
 #### 6.3 SwiGLU Activation
+
 **Replaces**: ReLU in the Feed-Forward Network
 
 ```
@@ -974,6 +1332,7 @@ Why better:
 ```
 
 #### 6.4 Grouped Query Attention (GQA)
+
 **Replaces**: Standard Multi-Head Attention (MHA)
 
 ```
@@ -993,6 +1352,7 @@ Why better:
 ```
 
 #### 6.5 KV-Cache for Efficient Inference
+
 **Optimization for**: Generation speed
 
 ```
@@ -1008,6 +1368,7 @@ This is why chatbots respond token-by-token quickly, not all-at-once slowly.
 ```
 
 **Upgrade Path** — toggle in `config.py`:
+
 ```python
 # Start classical (understand the basics)
 config = ModelConfig(use_rope=False, use_rmsnorm=False, use_swiglu=False)
@@ -1019,17 +1380,20 @@ config = ModelConfig(use_rope=True, use_rmsnorm=True, use_swiglu=True)  # Full m
 ```
 
 **Try It Yourself**:
-- [ ] Train classical vs modern with same config — compare final validation loss
-- [ ] Measure training speed (iters/sec) with RMSNorm vs LayerNorm
-- [ ] Generate long text with and without KV-cache — compare wall-clock time
+
+- Train classical vs modern with same config — compare final validation loss
+- Measure training speed (iters/sec) with RMSNorm vs LayerNorm
+- Generate long text with and without KV-cache — compare wall-clock time
 
 ---
 
 ### Step 7: Visualization & Understanding
+
 **Script**: `src/06_visualize.py`
 **Notebooks**: `notebooks/02_attention_deep_dive.ipynb`
 
 **What it does**:
+
 - **Loss curves**: Plot train/val loss over training iterations
 - **Attention maps**: Heatmaps showing which tokens attend to which
 - **Embedding space**: PCA/t-SNE of token embeddings (which characters cluster together?)
@@ -1037,6 +1401,7 @@ config = ModelConfig(use_rope=True, use_rmsnorm=True, use_swiglu=True)  # Full m
 - **Generation confidence**: Plot probability distribution over tokens during generation
 
 **Attention Map Example**:
+
 ```
               T  h  e     c  a  t     s  a  t
          T  [■  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·]
@@ -1058,9 +1423,11 @@ Causal mask visible: upper-right triangle is always zero
 ---
 
 ### Step 8: Interactive Web UI
+
 **Script**: `src/07_app.py`
 
 **What it does**:
+
 - Gradio-powered chat interface
 - Real-time token-by-token generation (streaming)
 - Adjustable generation parameters via sliders
@@ -1099,6 +1466,7 @@ demo = gr.ChatInterface(
 These are **not implemented** but explained conceptually, so learners understand the full LLM pipeline:
 
 #### 9.1 BPE Tokenization with tiktoken
+
 ```
 Character-level:  "playing" → ['p','l','a','y','i','n','g']  (7 tokens)
 BPE:              "playing" → ['play', 'ing']                 (2 tokens)
@@ -1108,6 +1476,7 @@ tiktoken is OpenAI's fast BPE implementation used in GPT-3.5/4.
 ```
 
 #### 9.2 LoRA — Low-Rank Adaptation
+
 ```
 Full fine-tuning:  Update ALL parameters              (expensive)
 LoRA:              Freeze base weights, add small      (cheap)
@@ -1119,6 +1488,7 @@ For a 128×128 weight matrix:
 ```
 
 #### 9.3 Quantization (GGUF)
+
 ```
 Full precision:  32 bits per parameter × 1M params = 4 MB
 8-bit quantized: 8 bits per parameter  × 1M params = 1 MB
@@ -1129,6 +1499,7 @@ This is how llama.cpp runs 70B models on consumer hardware.
 ```
 
 #### 9.4 RLHF / DPO (Alignment)
+
 ```
 Pre-training:    Learn language from raw text (what we build)
 SFT:             Fine-tune on instruction-following examples
@@ -1141,6 +1512,7 @@ This is what turns a "text completer" into a "helpful assistant."
 ```
 
 #### 9.5 torch.compile (PyTorch 2.0+)
+
 ```python
 model = GPT(config)
 model = torch.compile(model)  # One line for ~2× training speedup
@@ -1156,17 +1528,20 @@ Free performance — just requires PyTorch 2.0+.
 **File**: `data/stories.txt`
 
 **Content Guidelines**:
+
 - 10,000+ words of simple stories (more = better, up to ~1MB)
 - Fairy tales, short stories, or creative writing
 - Consistent style and vocabulary helps the model learn patterns
 - Can use public domain texts (Grimm's Fairy Tales, Aesop's Fables, etc.)
 
 **Recommended Sources**:
+
 - [Project Gutenberg](https://www.gutenberg.org/) — free public domain books
 - [TinyStories dataset](https://huggingface.co/datasets/roneneldan/TinyStories) — synthetic stories specifically designed for small LLM training
 - Write your own for a more personal learning experience
 
 **Example Content**:
+
 ```
 Once upon a time, in a land far away, there lived a young princess named Aurora. 
 She loved to explore the enchanted forest near her castle. One day, while wandering 
@@ -1179,15 +1554,18 @@ through the woods, she discovered a hidden cave behind a waterfall...
 
 Given our small scale (tiny model, small dataset):
 
-| Metric | Classical Architecture | Modern Architecture |
-|--------|----------------------|-------------------|
-| Parameters | ~500K - 2M | ~500K - 2M (same budget) |
-| Training Time | 5-30 min (CPU) / 1-5 min (GPU) | Similar or slightly faster |
-| Final Val Loss | ~1.8 - 2.5 | ~1.6 - 2.3 |
-| Output Quality | Coherent phrases, basic grammar | Slightly more coherent, fewer repetitions |
-| Context Handling | Fixed max length | Can generalize to longer (RoPE) |
+
+| Metric           | Classical Architecture          | Modern Architecture                       |
+| ---------------- | ------------------------------- | ----------------------------------------- |
+| Parameters       | ~500K - 2M                      | ~500K - 2M (same budget)                  |
+| Training Time    | 5-30 min (CPU) / 1-5 min (GPU)  | Similar or slightly faster                |
+| Final Val Loss   | ~1.8 - 2.5                      | ~1.6 - 2.3                                |
+| Output Quality   | Coherent phrases, basic grammar | Slightly more coherent, fewer repetitions |
+| Context Handling | Fixed max length                | Can generalize to longer (RoPE)           |
+
 
 **Sample Output** (after training):
+
 ```
 Input:  "Once upon a time"
 Output: "Once upon a time there was a little girl who lived in a small house 
@@ -1201,64 +1579,71 @@ Output: "Once upon a time there was a little girl who lived in a small house
 
 After completing the core project, consider these challenges:
 
-| Extension | Difficulty | What You'll Learn |
-|-----------|-----------|-------------------|
-| BPE tokenizer with tiktoken | Medium | Sub-word tokenization, vocabulary design |
-| Larger dataset (Project Gutenberg) | Easy | Scaling laws, data quality effects |
-| Multi-GPU training (DDP) | Medium | Distributed training fundamentals |
-| LoRA fine-tuning | Medium | Parameter-efficient adaptation |
-| Export to GGUF format | Hard | Quantization, cross-platform deployment |
-| Add instruction-following (SFT) | Hard | Alignment, chat formatting |
-| Mixture of Experts (MoE) | Hard | Sparse computation, routing |
-| Speculative decoding | Hard | Inference optimization, draft models |
-| Flash Attention | Hard | Memory-efficient attention, IO awareness |
+
+| Extension                          | Difficulty | What You'll Learn                        |
+| ---------------------------------- | ---------- | ---------------------------------------- |
+| BPE tokenizer with tiktoken        | Medium     | Sub-word tokenization, vocabulary design |
+| Larger dataset (Project Gutenberg) | Easy       | Scaling laws, data quality effects       |
+| Multi-GPU training (DDP)           | Medium     | Distributed training fundamentals        |
+| LoRA fine-tuning                   | Medium     | Parameter-efficient adaptation           |
+| Export to GGUF format              | Hard       | Quantization, cross-platform deployment  |
+| Add instruction-following (SFT)    | Hard       | Alignment, chat formatting               |
+| Mixture of Experts (MoE)           | Hard       | Sparse computation, routing              |
+| Speculative decoding               | Hard       | Inference optimization, draft models     |
+| Flash Attention                    | Hard       | Memory-efficient attention, IO awareness |
+
 
 ---
 
 ## Glossary
 
-| Term | Definition |
-|------|-----------|
-| **Token** | The smallest unit of text the model processes (character or sub-word) |
-| **Embedding** | A learned dense vector representation of a token |
-| **Attention** | Mechanism that lets tokens "communicate" with each other |
-| **Causal mask** | Prevents tokens from seeing future positions during generation |
-| **Logits** | Raw model output scores before softmax normalization |
-| **Softmax** | Converts logits to a probability distribution that sums to 1 |
-| **Cross-entropy** | Loss function measuring prediction quality |
-| **Backpropagation** | Algorithm to compute gradients via the chain rule |
-| **Residual connection** | Skip connection that adds input directly to output |
-| **LayerNorm / RMSNorm** | Normalization techniques to stabilize training |
-| **FFN** | Feed-Forward Network — the per-token MLP in each block |
-| **KV-Cache** | Stored key/value tensors to avoid recomputation during generation |
-| **RoPE** | Rotary Position Embedding — encodes position via rotation |
-| **SwiGLU** | Gated activation function used in modern transformer FFNs |
-| **BPE** | Byte-Pair Encoding — sub-word tokenization algorithm |
-| **LoRA** | Low-Rank Adaptation — efficient fine-tuning technique |
-| **RLHF** | Reinforcement Learning from Human Feedback — alignment technique |
-| **DPO** | Direct Preference Optimization — simpler alternative to RLHF |
+
+| Term                    | Definition                                                            |
+| ----------------------- | --------------------------------------------------------------------- |
+| **Token**               | The smallest unit of text the model processes (character or sub-word) |
+| **Embedding**           | A learned dense vector representation of a token                      |
+| **Attention**           | Mechanism that lets tokens "communicate" with each other              |
+| **Causal mask**         | Prevents tokens from seeing future positions during generation        |
+| **Logits**              | Raw model output scores before softmax normalization                  |
+| **Softmax**             | Converts logits to a probability distribution that sums to 1          |
+| **Cross-entropy**       | Loss function measuring prediction quality                            |
+| **Backpropagation**     | Algorithm to compute gradients via the chain rule                     |
+| **Residual connection** | Skip connection that adds input directly to output                    |
+| **LayerNorm / RMSNorm** | Normalization techniques to stabilize training                        |
+| **FFN**                 | Feed-Forward Network — the per-token MLP in each block                |
+| **KV-Cache**            | Stored key/value tensors to avoid recomputation during generation     |
+| **RoPE**                | Rotary Position Embedding — encodes position via rotation             |
+| **SwiGLU**              | Gated activation function used in modern transformer FFNs             |
+| **BPE**                 | Byte-Pair Encoding — sub-word tokenization algorithm                  |
+| **LoRA**                | Low-Rank Adaptation — efficient fine-tuning technique                 |
+| **RLHF**                | Reinforcement Learning from Human Feedback — alignment technique      |
+| **DPO**                 | Direct Preference Optimization — simpler alternative to RLHF          |
+
 
 ---
 
 ## References
 
 ### Foundational Papers
+
 1. [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (2017) — The original Transformer
 2. [Language Models are Unsupervised Multitask Learners](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) (GPT-2, 2019)
 3. [Language Models are Few-Shot Learners](https://arxiv.org/abs/2005.14165) (GPT-3, 2020)
 
 ### Modern Architecture References
-4. [RoFormer: Enhanced Transformer with Rotary Position Embedding](https://arxiv.org/abs/2104.09864) (RoPE, 2021)
-5. [GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202) (SwiGLU, 2020)
-6. [GQA: Training Generalized Multi-Query Transformer Models](https://arxiv.org/abs/2305.13245) (GQA, 2023)
-7. [LLaMA: Open and Efficient Foundation Language Models](https://arxiv.org/abs/2302.13971) (LLaMA, 2023)
+
+1. [RoFormer: Enhanced Transformer with Rotary Position Embedding](https://arxiv.org/abs/2104.09864) (RoPE, 2021)
+2. [GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202) (SwiGLU, 2020)
+3. [GQA: Training Generalized Multi-Query Transformer Models](https://arxiv.org/abs/2305.13245) (GQA, 2023)
+4. [LLaMA: Open and Efficient Foundation Language Models](https://arxiv.org/abs/2302.13971) (LLaMA, 2023)
 
 ### Learning Resources
-8. [The Illustrated Transformer](http://jalammar.github.io/illustrated-transformer/) — Jay Alammar's visual guide
-9. [Let's build GPT from scratch](https://www.youtube.com/watch?v=kCc8FmEb1nY) — Andrej Karpathy's video
-10. [nanoGPT](https://github.com/karpathy/nanoGPT) — Minimal GPT implementation
-11. [The Annotated Transformer](https://nlp.seas.harvard.edu/annotated-transformer/) — Harvard NLP's line-by-line walkthrough
-12. [3Blue1Brown: Neural Networks](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) — Visual intuition for deep learning
+
+1. [The Illustrated Transformer](http://jalammar.github.io/illustrated-transformer/) — Jay Alammar's visual guide
+2. [Let's build GPT from scratch](https://www.youtube.com/watch?v=kCc8FmEb1nY) — Andrej Karpathy's video
+3. [nanoGPT](https://github.com/karpathy/nanoGPT) — Minimal GPT implementation
+4. [The Annotated Transformer](https://nlp.seas.harvard.edu/annotated-transformer/) — Harvard NLP's line-by-line walkthrough
+5. [3Blue1Brown: Neural Networks](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) — Visual intuition for deep learning
 
 ---
 
