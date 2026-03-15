@@ -2,14 +2,36 @@
 
 from pathlib import Path
 
+from config import get_config
 
-def prepare_data():
-    """Load data, create vocabulary mappings, and return processed data."""
+
+def prepare_data(config=None):
+    """Load data, create vocabulary mappings, and return processed data.
+
+    Args:
+        config: Optional ModelConfig. If None, uses default config.
+
+    Returns:
+        train_text: Raw training text.
+        val_text: Raw validation text.
+        stoi: Character to index mapping (dict).
+        itos: Index to character mapping (dict).
+        vocab_size: Number of unique characters.
+        encode: Function text -> list[int].
+        decode: Function list[int] -> text.
+    """
+    if config is None:
+        config = get_config()
     
-    # Load data files
-    data_dir = Path(__file__).parent.parent / "data"
-    train_path = data_dir / "TinyStoriesV2-GPT4-train.txt"
-    val_path = data_dir / "TinyStoriesV2-GPT4-valid.txt"
+    # Load data files from config
+    data_dir = Path(__file__).parent.parent / config.data_dir
+    train_path = data_dir / config.train_file
+    val_path = data_dir / config.val_file
+    
+    if not train_path.exists():
+        raise FileNotFoundError(f"Training file not found: {train_path}")
+    if not val_path.exists():
+        raise FileNotFoundError(f"Validation file not found: {val_path}")
     
     print("Loading data...")
     with open(train_path, "r", encoding="utf-8") as f:
@@ -17,9 +39,9 @@ def prepare_data():
     with open(val_path, "r", encoding="utf-8") as f:
         val_text = f.read()
     
-    # Analyze vocabulary
+    # Analyze vocabulary (combined so vocab covers both splits)
     print("Analyzing vocabulary...")
-    chars = sorted(list(set(train_text + val_text)))
+    chars = sorted(set(train_text + val_text))
     vocab_size = len(chars)
     
     # Create mappings
@@ -55,8 +77,9 @@ def prepare_data():
     print(f"Original:  {sample[:50]}...")
     print(f"Decoded:   {decoded[:50]}...")
     print(f"Match:     {sample == decoded}")
-    
-    return train_text, val_text, stoi, itos, vocab_size
+    assert sample == decoded, "Encode/decode round-trip failed"
+
+    return train_text, val_text, stoi, itos, vocab_size, encode, decode
 
 
 if __name__ == "__main__":

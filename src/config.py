@@ -12,6 +12,11 @@ class ModelConfig:
     configurations.
     """
     
+    # Data files
+    data_dir: str = "data"                                    # Directory containing data files
+    train_file: str = "TinyStoriesV2-GPT4-train.txt"         # Training data filename
+    val_file: str = "TinyStoriesV2-GPT4-valid.txt"           # Validation data filename
+    
     # Data
     block_size: int = 64        # Maximum context length (how many characters the model sees)
     batch_size: int = 32        # Sequences per batch (parallel training examples)

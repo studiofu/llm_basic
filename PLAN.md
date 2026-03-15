@@ -1043,7 +1043,14 @@ The mappings (char→index, index→char) are then built from `chars`: for examp
 
 The script `src/01_data_preparation.py` was created with the following implementation:
 
-- **Data Loading**: Reads `TinyStoriesV2-GPT4-train.txt` and `TinyStoriesV2-GPT4-valid.txt` from the `data/` folder (files already split, no 90/10 split needed).
+- **Data Loading**: Reads `TinyStoriesV2-GPT4-train.txt` and `TinyStoriesV2-GPT4-valid.txt` from the `data/` folder (files already split, no 90/10 split needed). File paths are **configurable** via `config.py`:
+  ```python
+  data_dir: str = "data"
+  train_file: str = "TinyStoriesV2-GPT4-train.txt"
+  val_file: str = "TinyStoriesV2-GPT4-valid.txt"
+  ```
+  To use different data, edit these values in `src/config.py` or pass a custom config to `prepare_data(config=my_config)`.
+
 - **Vocabulary Analysis**: Combines train and validation text, extracts unique characters using `sorted(set(text))`, resulting in 230 unique characters (includes ASCII letters, digits, punctuation, and various Unicode characters).
 - **Mappings**: Creates `stoi` (char→index) and `itos` (index→char) dictionaries.
 - **Encode/Decode**: Simple functions using list comprehensions.
@@ -1067,6 +1074,45 @@ The script `src/01_data_preparation.py` was created with the following implement
 - Implement `get_batch()` for creating training batches
 - Create input-target pairs for next-token prediction
 
+**What "get_batch()" means:**  
+The training loop needs to feed the model many small chunks of text at once (a "batch"). `get_batch()` is a function that, each time you call it, returns one batch: it picks random starting positions in the training text, slices out `block_size` characters from each, and stacks them into two tensors (or arrays): one for **inputs** and one for **targets**. So you get something like `(X, Y)` where `X` has shape `(batch_size, block_size)` and `Y` has shape `(batch_size, block_size)` (targets are the same length but shifted by one, as below). The "creating training batches" part is: sample random windows, encode them, and package as input-target pairs ready for the model.
+
+**Example — one call to get_batch() with batch_size=2, block_size=8:**
+
+```
+Training text (encoded):  ... 54, 12, 89, 3, 67, 41, 23, 3, 14, 41, 23, 3, 45, 12, 89, 5, ... 
+                           (e.g. "...The cat sat on the..." )
+
+Random start 1: index 10  →  slice 8 tokens  →  [23, 3, 14, 41, 23, 3, 45, 12]
+Random start 2: index 20  →  slice 8 tokens  →  [89, 5, 67, 41, 23, 3, 14, 41]
+
+Stack into X (inputs):     shape (2, 8)
+  Row 0: [23, 3, 14, 41, 23, 3, 45, 12]
+  Row 1: [89, 5, 67, 41, 23, 3, 14, 41]
+
+Build Y (targets) = each row shifted left by 1 (predict "next" at every position):
+  Row 0: [3, 14, 41, 23, 3, 45, 12, 89]   (next after 23 is 3, next after 3 is 14, ...)
+  Row 1: [5, 67, 41, 23, 3, 14, 41, 23]
+
+get_batch() returns (X, Y). The model gets X and is trained to predict Y.
+```
+
+**What "input-target pairs for next-token prediction" means:**  
+The model’s job is to predict the **next** character at every position. So for each chunk of text we need two sequences of the same length: **input** = the characters the model sees (e.g. positions 0..62), **target** = the character we want it to predict at each position (the "next" one: positions 1..63). So target is just input shifted by one. For example, if the chunk is `"The cat"` (7 chars), input might be `[T,h,e, ,c,a,t]` and target `[h,e, ,c,a,t,?]` — at position 0 we predict "h", at position 1 we predict "e", and so on. Creating these pairs means: from the full encoded text, take a window of length `block_size`, call it `x`, and form `y` as the same window shifted by one (so `y[i] = x[i+1]`). Every training example is one such (input, target) pair; `get_batch()` returns many of them at once.
+
+**Example — one row of the batch (input vs target):**
+
+```
+One row of X (input):   [23, 3, 14, 41, 23, 3, 45, 12]   →  e.g. "t sat o"
+One row of Y (target):  [ 3, 14, 41, 23, 3, 45, 12, 89]  →  e.g. " sat on"
+
+At position 0: model sees 23 → should predict 3   (see "t" → predict " ")
+At position 1: model sees 3  → should predict 14  (see " " → predict "s")
+At position 2: model sees 14 → should predict 41  (see "s" → predict "a")
+...
+At position 7: model sees 12 → should predict 89  (see "o" → predict "n")
+```
+
 **Key Concepts to Learn**:
 
 - **Next-token prediction**: the fundamental task — given tokens [1,2,3], predict [2,3,4]
@@ -1088,6 +1134,9 @@ At EACH position, the model predicts the next token:
   Position 2: given [54, 12, 89]   -> predict 3   ("The" -> " ")
   ...and so on
 ```
+
+**Important — what we actually feed in:**  
+We do **not** pass only "T" (or only [54]) as input. We pass the **entire block** (e.g. all 64 token IDs) in one forward pass. The model receives one vector per position (embedding of that token + position), and with **causal masking** each position can only "see" itself and earlier positions. So at position 0 the effective context is [54]; at position 1 it is [54, 12]; at position 2 it is [54, 12, 89]; etc. That is why we say "given [54]" or "given [54, 12]" — it means "what that position is allowed to look at," not "what we put into the model." One forward pass through the transformer produces one predicted next-token distribution at every position; we compare all of them to the target sequence in one go.
 
 **Try It Yourself**:
 
@@ -1114,6 +1163,24 @@ Combined:           token_emb + position_emb → input to transformer
 ```
 
 **Why positional embeddings?** Attention is permutation-invariant — without position info, "cat sat on mat" and "mat sat on cat" look identical to the model.
+
+**How position embedding works (step by step):**
+
+- We have a **learned lookup table** for positions, similar to the token embedding table. Its shape is **(block_size, n_embd)** — one vector of length 128 for each position index 0, 1, 2, ..., 63.
+- For each position in the sequence we do:
+  1. **Token embedding:** Look up the vector for that token ID (e.g. 54 → 128 numbers). Same as before; static per token.
+  2. **Position embedding:** Look up the vector for that **position index** (0, 1, 2, ..., 63). So position 0 always gets the same 128 numbers, position 1 gets another 128 numbers, etc. These are **learned** during training (not a fixed formula); they start random and get updated like other weights.
+  3. **Combine:** Add the two vectors element-wise: `input_at_position = token_emb + position_emb`. So each position ends up with one 128-d vector that encodes both "what token is here" and "where it is in the sequence."
+- Example: At position 2 we have token "e" (ID 89). We look up token 89 → vector A (128-d). We look up position 2 → vector B (128-d). We pass A + B into the transformer. So the model always sees both identity and position.
+
+So: **token embedding** = "what character?" (same for every "e"); **position embedding** = "which slot?" (same for every position 2). Both are learned; we add them to get the actual input vector at each position. (In the modern RoPE variant, position is encoded differently — see Step 6 — but the idea is the same: we inject position so the model knows order.)
+
+**Summary (takeaways):**
+
+- **Both tables are trained.** The token embedding table and the position embedding table are learned parameters (updated by gradient descent). "Static" means the same token ID (or position index) always uses the same row, not that the values in that row are fixed forever.
+- **Position = "where in the current window."** Position is relative to the context window (0 = first token in this window, 1 = second, …), not absolute position in the document. So when we slide the window, the same character (e.g. "C") can sit at different positions (4 → 3 → 2 → 1) and correctly gets a different position embedding each time.
+- **The position table contents do not change per forward pass.** The 64×128 numbers are fixed at inference; only during training do they get updated. What changes from pass to pass is **which row we look up** for each token — because the same character moves to a different slot in the new window. So the lookup index changes; the table does not.
+- **Why a lookup table and add?** Attention is permutation-invariant, so we must inject position. A learned vector per position (lookup table) is simple and flexible; adding it to the token embedding keeps dimension the same and lets the model use both "what" and "where" in one vector.
 
 #### 3.2 Single Head of Self-Attention
 
