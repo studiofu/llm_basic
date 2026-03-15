@@ -1162,7 +1162,7 @@ Position Embedding: each position (0,1,2,3) → learned vector of size n_embd
 Combined:           token_emb + position_emb → input to transformer
 ```
 
-**Why positional embeddings?** Attention is permutation-invariant — without position info, "cat sat on mat" and "mat sat on cat" look identical to the model.
+**Why positional embeddings?** Attention is permutation-invariant — without position info, "cat sat on mat" and "mat sat on cat" look identical to the model. So we have to inject position somehow. That position information is **stored in the position vector** (one vector per position index). Those vectors are **trained** (learned like other weights), and the scheme is **tied to block_size**: we have exactly one position vector for each slot in the window (0 to block_size−1), so the table has shape (block_size, n_embd).
 
 **How position embedding works (step by step):**
 
