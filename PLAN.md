@@ -772,10 +772,7 @@ These are the three main building blocks inside each transformer layer. Here’s
 - **Hidden state** — The vector at a position after one or more layers (e.g. "hidden state at layer 2, position 5"). Standard in RNN/Transformer.
 - **Representation** or **contextual representation** — Same idea: the current vector at that position after processing. "Contextual" means it depends on surrounding tokens, not just the token itself.
 
-
 So: **static embedding** = fixed per token; **hidden state** (or **representation**) = current vector at that position after processing.
-
-
 
 **Attention in one formula block**
 
@@ -789,12 +786,10 @@ Then, for each position whose output we want (e.g. the last position), we:
 
 1. **Scores:** For each position j, compute `score_j = Q · K_j` (dot product). In practice we often scale by √d before the next step.
 2. **Weights:** Apply softmax to the scores so they sum to 1: `weights = softmax(scores)`.
-3. **Output:** Return the weighted sum of the V vectors, not a single V:  
-   `output = weight_0×V_0 + weight_1×V_1 + … + weight_{63}×V_63`
+3. **Output:** Return the weighted sum of the V vectors, not a single V:
+  `output = weight_0×V_0 + weight_1×V_1 + … + weight_{63}×V_63`
 
 So we **use** all V vectors and **return** that weighted combination. In short: **scores = Q·K → softmax → weights → output = Σ (weight_j × V_j)**.
-
-
 
 This is the part that computes the attention scores and the weighted mix (the mechanism we already discussed in the `n_head` section). But how does the model actually *compute* those percentage scores? That's where Q, K, V come in.
 
