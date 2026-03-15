@@ -999,6 +999,29 @@ So in one transformer layer: **attention** does the "look around" step, **feed-f
 - Split data into train/validation sets (90/10)
 - Print sample encoded/decoded sequences for verification
 
+**What "create mappings" means:**  
+We need a fixed way to turn characters into integers (for the model) and integers back into characters (for us). So we build two lookup structures from the dataset's unique characters: (1) **char → index**: e.g. `{'a': 0, 'b': 1, ' ': 2, ...}` so `encode("a")` gives `0`; (2) **index → char**: e.g. `{0: 'a', 1: 'b', 2: ' ', ...}` so `decode([0])` gives `"a"`. Together these are the "mappings."
+
+**What "print sample encoded/decoded sequences" means:**  
+After we have `encode` and `decode`, we run them on a short snippet of text and print the result so we can check they work. For example: take `"The cat"` → encode → `[45, 12, 89, 3, 67, 41, 23]` → decode → `"The cat"`. If the printed decoded text matches the original, the pipeline is correct. It's a sanity check.
+
+**How to analyze vocab count:**  
+Vocabulary = the set of unique characters (or tokens) in your data. To get the count:
+
+1. **Load the raw text** (e.g. read `data/stories.txt` into one string).
+2. **Collect unique characters:** e.g. `chars = sorted(set(text))` — `set(text)` removes duplicates, `sorted` gives a stable order so the same dataset always yields the same mapping.
+3. **Vocab size** = number of unique characters: `vocab_size = len(chars)` (e.g. 65).
+4. **Optional — print statistics:** total characters `len(text)`, vocab size `len(chars)`, and maybe the list of characters or a frequency table (how many times each character appears). Example:
+   ```python
+   from collections import Counter
+   counts = Counter(text)
+   print("Vocab size:", len(counts))
+   print("Total characters:", len(text))
+   print("Most common:", counts.most_common(10))
+   ```
+
+The mappings (char→index, index→char) are then built from `chars`: for example, `char_to_idx = {c: i for i, c in enumerate(chars)}` and `idx_to_char = {i: c for i, c in enumerate(chars)}`.
+
 **Input**: Raw text file with stories
 **Output**: Processed data, vocab size, encode/decode functions
 
@@ -1013,6 +1036,23 @@ So in one transformer layer: **attention** does the "look around" step, **feed-f
 
 - What happens if you use a tiny dataset (100 words)? A large one?
 - Count how many unique characters your dataset has. Why does this matter for model size?
+
+---
+
+**Implementation Notes**:
+
+The script `src/01_data_preparation.py` was created with the following implementation:
+
+- **Data Loading**: Reads `TinyStoriesV2-GPT4-train.txt` and `TinyStoriesV2-GPT4-valid.txt` from the `data/` folder (files already split, no 90/10 split needed).
+- **Vocabulary Analysis**: Combines train and validation text, extracts unique characters using `sorted(set(text))`, resulting in 230 unique characters (includes ASCII letters, digits, punctuation, and various Unicode characters).
+- **Mappings**: Creates `stoi` (char→index) and `itos` (index→char) dictionaries.
+- **Encode/Decode**: Simple functions using list comprehensions.
+- **Verification**: Samples 100 characters from training data, encodes then decodes, confirms perfect reconstruction.
+
+**Dataset Stats**:
+- Training: 2,226,845,268 characters (~2.2B)
+- Validation: 22,493,387 characters
+- Vocabulary: 230 unique characters
 
 ---
 
@@ -1529,11 +1569,17 @@ Free performance — just requires PyTorch 2.0+.
 - Consistent style and vocabulary helps the model learn patterns
 - Can use public domain texts (Grimm's Fairy Tales, Aesop's Fables, etc.)
 
-**Recommended Sources**:
+**Where to download (best options)**:
 
-- [Project Gutenberg](https://www.gutenberg.org/) — free public domain books
-- [TinyStories dataset](https://huggingface.co/datasets/roneneldan/TinyStories) — synthetic stories specifically designed for small LLM training
-- Write your own for a more personal learning experience
+| Source | Why use it | How to get it |
+|--------|------------|---------------|
+| **TinyStories (Hugging Face)** | **Best for this project.** Short, simple sentences; designed for small LMs; clean and consistent. | [TinyStories on Hugging Face](https://huggingface.co/datasets/roneneldan/TinyStories) — use `datasets` or the Hub UI; pick a split (e.g. `train`), load as text, then concatenate and save as `data/stories.txt`. |
+| **Project Gutenberg** | Free, public-domain books; good for classic fairy tales and prose. | [gutenberg.org](https://www.gutenberg.org/) — search e.g. "Grimm" or "Aesop"; open a book → "Plain Text UTF-8" → copy or download. Paste/append into `data/stories.txt`. |
+| **WikiText, OpenWebText, etc.** | Larger, more varied; better for scaling up later. | [Hugging Face Datasets](https://huggingface.co/datasets) — search "wikitext" or "openwebtext"; load and export a subset as one text file. |
+
+**Recommended:** Start with **TinyStories** (or a few **Project Gutenberg** fairy tales) so the dataset is small, coherent, and easy to inspect. Move to larger corpora once the pipeline works.
+
+**Other options**: Write your own stories, or use any plain-text file you have (one story or book per line or concatenated) and save it as `data/stories.txt`.
 
 **Example Content**:
 
