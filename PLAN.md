@@ -99,10 +99,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv init
 
 # Pin Python version (uv will auto-install if needed)
-uv python pin 3.12
-
-# Add core dependencies
-uv add torch numpy tqdm
+uv python pin 3.13
 
 # Add visualization dependencies
 uv add matplotlib seaborn
@@ -113,6 +110,46 @@ uv add gradio                # Step 9: Web UI
 uv add tensorboard           # Optional: training dashboards
 ```
 
+**PyTorch Installation (Choose One)**:
+
+<details>
+<summary>Option A: CPU-only (simpler, works everywhere)</summary>
+
+```bash
+# CPU-only PyTorch (no GPU required, slower training)
+uv pip install torch>=2.6.0 numpy tqdm --index-url https://download.pytorch.org/whl/cpu
+```
+
+**When to use CPU-only**:
+- You don't have an NVIDIA GPU
+- You just want to explore the code without training
+- Training speed is not a priority (e.g., small experiments)
+
+</details>
+
+<details>
+<summary>Option B: GPU (CUDA) — Recommended for training</summary>
+
+```bash
+# GPU PyTorch with CUDA 12.4 (10-100× faster training)
+uv pip install torch>=2.6.0 numpy tqdm --index-url https://download.pytorch.org/whl/cu124
+
+# Verify GPU is available
+uv run python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
+```
+
+**Prerequisites**:
+- NVIDIA GPU with CUDA compute capability 3.5+
+- [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) installed
+- NVIDIA drivers updated
+
+**When to use GPU**:
+- You have an NVIDIA GPU and want fast training
+- You're doing serious experiments or full training runs
+- You want to train models with larger configs
+
+</details>
+
 `**pyproject.toml**` (what uv generates and manages):
 
 ```toml
@@ -121,22 +158,26 @@ name = "llm-basic"
 version = "0.1.0"
 description = "Build a miniature LLM from scratch — educational project"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13,<3.14"
 dependencies = [
-    "torch>=2.2",
-    "numpy",
-    "tqdm",
-    "matplotlib",
-    "seaborn",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.3",
+    "seaborn>=0.13.2",
+    "torch>=2.6.0",
+    "tqdm>=4.67.3",
 ]
 
-[project.optional-dependencies]
-# Install with: uv sync --extra all
-all = [
-    "tiktoken",
-    "gradio",
-    "tensorboard",
-]
+# For GPU support (CUDA 12.4), add this index configuration:
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
 ```
 
 **Running scripts with uv**:
