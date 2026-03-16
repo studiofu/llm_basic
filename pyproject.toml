@@ -8,17 +8,26 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.4.3",
     "seaborn>=0.13.2",
+    # PyTorch with platform-specific sources (see [tool.uv.sources] below)
     "torch>=2.6.0",
     "tqdm>=4.67.3",
 ]
 
+# Platform-specific PyTorch wheels:
+# - macOS: Uses PyPI (includes MPS support for Apple Silicon)
+# - Windows/Linux: Uses CUDA 12.4 wheels from PyTorch index
+
 [[tool.uv.index]]
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
+priority = "explicit"  # Only used when explicitly requested
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu124" }
-torchvision = { index = "pytorch-cu124" }
+# On macOS: use default PyPI (MPS support is built-in)
+# On Windows/Linux: use CUDA 12.4 index
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform != 'darwin'" },
+]
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
