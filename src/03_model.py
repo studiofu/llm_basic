@@ -270,7 +270,17 @@ class GPTLanguageModel(nn.Module):
         super().__init__()
         self.config = config
         
-        # Token embeddings: each token ID gets an n_embd vector        
+
+        # if vocab_size = 65, n_embd = 128, block_size = 64        
+        # because need to convert the token ID to a vector of size n_embd
+        # this table is trained during training
+        # self.token_embedding_table:      (65, 128)
+
+        # because need to convert the position to a vector of size n_embd
+        # self.position_embedding_table:   (64, 128)
+        # token_emb:       (batch_size, seq_len, 128)
+        # where seq_len is the length of the input sequence
+        
         self.token_embedding_table = nn.Embedding(config.vocab_size, config.n_embd)
         
         # Position embeddings: each position (0 to block_size-1) gets an n_embd vector
@@ -283,6 +293,14 @@ class GPTLanguageModel(nn.Module):
         
         # Final layer norm and output projection
         self.ln_final = nn.LayerNorm(config.n_embd)
+
+        # A Linear layer is a fully connected neural network layer, also known as a dense layer.
+    
+        # it converts the embedding vector of size n_embd to a vector of logits for each vocabulary token (vocab_size).
+        # the last dimension is the probability of the next token in the vocabulary
+        # the highest value in the vector in the last dimension is the most likely next token        
+        # example, input [1, 64, 384] (after transformer blocks) , output [1, 64, 65] (logits for each vocabulary token)
+        #         
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         
         # Initialize weights
@@ -317,8 +335,8 @@ class GPTLanguageModel(nn.Module):
         # Token embedding: each ID -> learned vector of size n_embd
         # (batch_size, seq_len) -> (batch_size, seq_len, n_embd)
         # embeeding is a kind of lookup table
-        # you pass (batch_size, 64, 64, 64) , it will also return (batch_size, 64, 64, 64, n_embd = 128)
         # here you pass (batch_size, seq_len) , it will return (batch_size, seq_len, n_embd)
+        # input 64 batch, 10 chars input (64, 10) , output (64, 10, 128)
         token_emb = self.token_embedding_table(idx)
         
         # Position embedding: each position 0..seq_len-1 -> n_embd vector
@@ -415,7 +433,7 @@ class GPTLanguageModel(nn.Module):
         """Count total trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
-
+#
 def create_model(config: ModelConfig, vocab_size: int) -> GPTLanguageModel:
     """Create and initialize a GPT model.
     

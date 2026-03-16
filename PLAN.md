@@ -1644,6 +1644,23 @@ Decode → "Once upon a time a little girl named Rose..."
 - What happens with top_k=1? (same as greedy)
 - Try top_p=0.5 vs top_p=0.95 — which gives better outputs?
 
+#### Block size and shorter inputs (concrete example)
+
+In all previous steps we set a `block_size` (maximum context length), e.g. `block_size = 64`. This is a **maximum**, not a required length. The model happily works with any `seq_len ≤ block_size` because we only ever use the first `seq_len` positions of everything.
+
+Example with a toy model:
+
+- **Assume** `block_size = 4`, embedding dim `d_model = 8`, and a sequence with **2 tokens**.
+- Token embeddings: `tok_emb(tokens)` → shape `[batch=1, seq_len=2, d_model=8]` → `[1, 2, 8]`.
+- Positional embeddings: we created `pos_emb = nn.Embedding(block_size=4, d_model=8)` (positions 0..3), but for `seq_len=2` we only index positions `[0, 1]`, then broadcast to `[1, 2, 8]` and add: `x = tok_emb + pos_emb[:seq_len]` → still `[1, 2, 8]`.
+- Self-attention projections: `Q, K, V` are all `[1, 2, 8]`.
+- Attention scores: `scores = Q @ K.transpose(-1, -2)` → `[1, 2, 2]`:
+  - last two dims are `(query_position, key_position)` = `(2, 2)`
+  - each of the 2 tokens gets scores to all 2 tokens (itself and the other).
+- If we use a causal mask, we slice the precomputed `[block_size, block_size] = [4, 4]` mask down to `[seq_len, seq_len] = [2, 2]`.
+
+So when `seq_len < block_size`, we just use a **prefix** of positional embeddings and masks, and all tensor shapes are based on the actual `seq_len`. It only breaks if you try `seq_len > block_size`, because then you’d need positional embeddings and masks for positions that do not exist (indices beyond `block_size - 1`).
+
 ---
 
 ### Step 6: Modern Architecture Upgrades
