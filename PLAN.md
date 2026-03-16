@@ -2,11 +2,7 @@
 
 > A step-by-step guide to building a miniature Large Language Model from scratch — using the same architecture and techniques behind GPT, LLaMA, Gemma, and Mistral.
 
-
-
-Author: Johnson Fu (johnson.fu@gmail.com) co-edited by KIMI 2.5 and Claude Opus 4.6
-
-
+Author: Johnson Fu ([johnson.fu@gmail.com](mailto:johnson.fu@gmail.com)) co-edited by KIMI 2.5 and Claude Opus 4.6
 
 ## Project Goal
 
@@ -891,6 +887,7 @@ Each position has a **Value** vector V — a list of 128 numbers (the "notebook"
 
 ```
 Last position ("a") has  Q = [0.5, 0.1, -0.3, ...]   (Q comes from "a"'s embedding)
+Q = E @ W_Q.T
 
 Position "a" has  K_a = [0.6, 0.0, -0.2, ...]   →  Q·K_a = 0.36  (high — similar direction)
 Position "m" has  K_m = [0.4, 0.2, -0.1, ...]   →  Q·K_m = 0.28
@@ -1388,21 +1385,151 @@ Sample next token
 
 **Script**: `src/04_train.py`
 
-**What it does**:
+**Big picture**: In Step 3 you built the "brain" (the transformer model). Step 4 is where you actually *teach* that brain using data. This is where the model sees millions of input-target pairs and slowly adjusts its weights so that its next-character predictions get better over time.
 
-1. Initialize model with random weights
-2. Set up AdamW optimizer with learning rate schedule
-3. Training loop:
-  - Sample a random batch of data
-  - Forward pass: compute predictions and loss
-  - Backward pass: compute gradients via backpropagation
-  - Update weights with optimizer
-  - Periodically evaluate on validation set
-  - Generate sample text to monitor quality
-  - Log metrics to TensorBoard (optional)
-4. Save best model checkpoint
+**What you actually build in this step** is not a new model, but a **training script** that coordinates all the pieces you already have (data pipeline, tokenizer, model) and makes them learn together.
 
-**Learning Rate Schedule** (modern standard):
+At a high level, in `04_train.py` you will:
+
+1. **Build the training setup**
+   - Load the TinyStories text and create a `get_batch(split)` function for `"train"` and `"val"`.
+   - Load `ModelConfig` (hyperparameters) and set up the random seed and device (CPU/GPU).
+2. **Instantiate the model and optimizer**
+   - Create the transformer model from Step 3 and move it to the device.
+   - Create an **AdamW optimizer** and a **learning rate schedule** (warmup + cosine decay).
+3. **Implement the training loop**
+   - For `max_iters` steps:
+     - sample a random batch of `(X, Y)` pairs from the training data,
+     - run a **forward pass** (compute predictions and cross-entropy loss),
+     - run a **backward pass** (compute gradients with `loss.backward()`),
+     - optionally clip gradients,
+     - step the optimizer and update the learning rate,
+     - every `eval_interval` steps:
+       - compute validation loss on held-out data,
+       - print a training log line (iter, train loss, val loss, LR),
+       - optionally generate a short sample story from the current model.
+4. **Handle outputs and checkpoints**
+   - Track the **best validation loss** seen so far.
+   - When you get a new best, save a checkpoint to `models/` (e.g. `models/tinystories_step4_best.pt`).
+   - Optionally, log metrics to TensorBoard for later visualization.
+
+**End result of Step 4**:
+
+- A **trained (or partially trained) model checkpoint** on disk that Step 5 can load for generation.
+- A record of training progress (printed logs, and optionally TensorBoard logs) that shows how loss and sample quality improved over time.
+
+#### 4.1 Initializing the Model and Optimizer
+
+**Initialize the model**:
+
+- You construct the model from `ModelConfig`, for example:
+  - `block_size = 64`, `n_embd = 128`, `n_head = 4`, `n_layer = 6`.
+- All weights start out **random** (small random numbers). At this point, the model's predictions are basically noise.
+- You then move it to the device:
+  - GPU if available (`cuda`),
+  - Apple Silicon (`mps`),
+  - otherwise CPU.
+
+**Initialize the optimizer (AdamW)**:
+
+- You tell PyTorch:
+  - "Here are all the model parameters" (`model.parameters()`),
+  - "Use this base learning rate" (`learning_rate` from config),
+  - "Use this weight decay" (`weight_decay` from config).
+- AdamW is a smarter version of gradient descent that:
+  - keeps a moving average of gradients (momentum),
+  - keeps a moving average of squared gradients (to adapt step sizes),
+  - applies **weight decay** in a clean way (shrinks weights toward zero a tiny bit each step to reduce overfitting).
+
+Conceptually, for each parameter `w` and its gradient `g`, AdamW does:
+
+- smooth the gradient over time (so updates are less noisy),
+- take a step in the direction that reduces loss,
+- slightly shrink `w` toward zero (weight decay).
+
+You do not need to implement the math yourself; PyTorch's `torch.optim.AdamW` handles it.
+
+#### 4.2 The Training Step (One Iteration)
+
+One training iteration looks like this in plain language:
+
+1. **Sample a batch**  
+   - Call something like `x, y = get_batch("train")`.
+   - `x` has shape `(batch_size, block_size)` — token IDs for input.
+   - `y` has the same shape — token IDs for the targets (shifted by 1).
+
+2. **Forward pass (prediction)**  
+   - Call `logits, loss = model(x, y)`.
+   - The model:
+     - turns token IDs into embeddings,
+     - runs them through all transformer blocks,
+     - applies the final linear layer to get **logits** (unnormalized scores) for each vocab token at each position,
+     - computes **cross-entropy loss** by comparing logits to the true target tokens `y`.
+
+3. **Backward pass (gradient computation)**  
+   - Call `optimizer.zero_grad()` to clear old gradients.
+   - Call `loss.backward()`.
+   - PyTorch walks backward through all operations (this is **backpropagation**) and:
+     - computes, for each parameter, how much a tiny change in that parameter would change the loss.
+     - stores that in `param.grad`.
+
+4. **Gradient clipping (safety)**  
+   - Sometimes gradients can become huge ("exploding gradients").
+   - You can call `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)`.
+   - This rescales gradients so that their total norm is at most 1.0.
+
+5. **Optimizer step (update weights)**  
+   - Call `optimizer.step()`.
+   - AdamW looks at each parameter and its gradient and updates it:
+     - moves it a tiny amount in the direction that should reduce loss,
+     - applies weight decay if configured.
+
+6. **Update learning rate**  
+   - Either:
+     - use a built-in scheduler, or
+     - manually compute the current learning rate based on the iteration number (warmup + cosine decay) and set it on the optimizer.
+
+After one iteration, the model's weights have changed slightly. After thousands of iterations, these small changes accumulate and the model's predictions become much better.
+
+#### 4.3 Cross-Entropy Loss (What We Minimize)
+
+For each position in each sequence:
+
+- The model outputs a vector of length `vocab_size` of logits (scores) — one score per possible next character.
+- We apply `softmax` internally to turn logits into probabilities.
+- Cross-entropy loss answers: "How wrong was our predicted probability distribution compared to the true next token?"
+
+Intuition:
+
+- If the true next token is "a" and the model assigns:
+  - 80% probability to "a" → loss is small (good).
+  - 1% probability to "a" → loss is large (bad).
+- Cross-entropy averages this over:
+  - all positions in the block,
+  - all sequences in the batch.
+
+So on a batch of shape `(batch_size, block_size)` you are effectively computing the average "wrongness" over `batch_size * block_size` next-token predictions in one go.
+
+#### 4.4 Learning Rate Schedule (Warmup + Cosine Decay)
+
+If the learning rate is too:
+
+- high → training can blow up, loss becomes `nan`,
+- low → training is very slow and might get stuck.
+
+Modern transformers use a schedule instead of a fixed learning rate:
+
+1. **Warmup phase**  
+   - Start with a very small learning rate, for example:
+     - at iteration 0: `lr = min_lr` or `0`,
+     - grow linearly to `learning_rate` by `warmup_iters`.
+   - This gently "nudges" the model instead of slamming it with huge updates when weights are still random.
+
+2. **Cosine decay phase**  
+   - After warmup, slowly decrease the learning rate from `learning_rate` down to `min_lr` using a cosine-shaped curve over the remaining iterations.
+   - Early on, the model takes big steps (learns fast); later it takes smaller and smaller steps (fine-tuning).
+
+Visually:
 
 ```
 Learning Rate
@@ -1416,17 +1543,32 @@ Learning Rate
  warmup    cosine decay
 ```
 
-Linear warmup for stability, then cosine decay to a minimum LR. This is the standard schedule used in GPT-2, GPT-3, LLaMA, and most modern LLMs.
+This is the schedule used in many real-world LLMs (GPT-2, GPT-3, LLaMA, etc.) because it gives stable and efficient training.
 
-**Key Concepts to Learn**:
+#### 4.5 Train vs Validation and Overfitting
 
-- **Cross-entropy loss**: measures how far predictions are from true next tokens
-- **Backpropagation**: chain rule applied through the entire network
-- **AdamW**: Adam with decoupled weight decay — the default optimizer for transformers
-- **Gradient clipping**: prevents exploding gradients (max_norm=1.0)
-- **Overfitting detection**: when train loss drops but val loss rises
+During training you track two losses:
 
-**Training Output**:
+- **Train loss**:
+  - computed on batches from the training split,
+  - usually goes down steadily if training is working.
+- **Validation (val) loss**:
+  - computed on batches from a held-out validation split,
+  - tells you how well the model generalizes to text it has not directly trained on.
+
+Signs of overfitting:
+
+- Train loss keeps going down.
+- Validation loss stops going down and starts to rise.
+
+When that happens, the model is starting to "memorize" training text instead of learning general patterns. You typically:
+
+- save the checkpoint with the **lowest validation loss**,
+- use that one for inference.
+
+#### 4.6 Example Training Log
+
+You might see logs like:
 
 ```
 Iter    0 | Train loss: 4.174 | Val loss: 4.171 | LR: 0.000003
@@ -1436,12 +1578,21 @@ Iter  500 | Train loss: 1.972 | Val loss: 2.053 | LR: 0.000287
 Sample @ iter 500: "Once upon a time there was a little girl who lived..."
 ```
 
-**Try It Yourself**:
+Interpretation:
 
-- Plot training vs validation loss. Where does overfitting start?
-- Try `learning_rate=0.01` — what happens? Why?
-- Try `learning_rate=0.00001` — what changes?
-- Remove warmup — is training less stable?
+- Early on, both losses are high (around the log of vocab size).
+- As training continues, both go down.
+- Periodically you also print a **sample generation** so you can see qualitatively how the model is improving (does it still output gibberish, or does it start forming sentences?).
+
+#### 4.7 Try It Yourself
+
+- Plot training vs validation loss over time. Where does validation loss stop improving?
+- Try `learning_rate = 0.01` (too high for this model) — what happens to loss?
+- Try `learning_rate = 0.00001` (very low) — does the model still learn, just more slowly?
+- Remove warmup — do you see more instability early in training (loss spikes, `nan`, etc.)?
+- Turn off weight decay — does validation loss get worse (more overfitting)?
+
+Once you finish Step 4 and have a checkpoint with reasonable validation loss, you are ready for **Step 5: Inference/Generation**, where you actually talk to your mini-LLM.
 
 ---
 
