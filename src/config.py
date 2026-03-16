@@ -29,7 +29,7 @@ class ModelConfig:
     dropout: float = 0.1        # Dropout rate (prevents overfitting)
 
     # Training
-    max_iters: int = 5000       # Total training iterations
+    max_iters: int = 10000       # Total training iterations
     eval_interval: int = 250    # Evaluation frequency (check progress every N steps)
     eval_iters: int = 200       # Batches per evaluation (how thorough each check is)
     learning_rate: float = 3e-4 # Peak learning rate (step size for adjustments)
